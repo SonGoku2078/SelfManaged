@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | requirements-done |
-| Nächste Rolle | /architect |
-| Owner-Rolle | req-engineer |
+| Status | architecture-done |
+| Nächste Rolle | /developer |
+| Owner-Rolle | architect |
 | Datum | 2026-09-14 |
 | Issue | https://github.com/SonGoku2078/Task-Manager/issues/88 |
 | Folge-Issues | #89 (Handy/Cloud + Auth), #90 (Sprachausgabe, nur Merkposten) |
@@ -12,6 +12,7 @@
 > Orchestrator-Log:
 > - 2026-09-14 Grill-me-Session abgeschlossen, Entscheidungen 1–8 im Issue #88 festgehalten → /req-engineer
 > - 2026-09-14 requirements-done (AC-1…AC-21) → /architect
+> - 2026-09-14 architecture-done (apps/mcp, 13 Tools, logic.ts unit-testbar) → /developer
 
 ## 0. Ausgangslage (aus der Grill-me-Session)
 
@@ -87,3 +88,66 @@ Keine neuen Tabellen/Felder. Verwendete Task-Felder: `id, number, title, descrip
 ### Nicht-funktional
 - Node 24 (wie CI), keine neuen Root-Abhängigkeiten außer `@modelcontextprotocol/sdk` + `zod` in `apps/mcp/package.json`.
 - Antwortzeit: eine Tool-Antwort = maximal zwei API-Aufrufe (Tasks + Projekte), keine Caches (die App ändert Daten parallel).
+
+## 2. Architektur
+
+### Einordnung
+Der MCP-Server ist ein **eigenständiger Node-Prozess** (`apps/mcp/`), den der KI-Client startet und über stdio anspricht. Er hält keinen Zustand und spricht die bestehende REST-API an. Keine Server-Änderung.
+
+```
+Claude Desktop / Claude Code ──stdio (JSON-RPC, MCP)──► apps/mcp (Node)
+                                                            │ fetch, TM_API_URL
+                                                            ▼
+                                                   Express-Server /api/*  (Dev :3002 | Prod :3001)
+```
+
+### Modulstruktur (`apps/mcp/`)
+| Datei | Verantwortung |
+|---|---|
+| `package.json` | `type: module`, Deps `@modelcontextprotocol/sdk` ^1.30, `zod` ^4; Scripts `build` (tsc), `start` (node dist/index.js) |
+| `tsconfig.json` | `module: NodeNext`, `target: ES2022`, `outDir: dist`, `strict` |
+| `src/index.ts` | Einstieg: liest `TM_API_URL` (fehlt → stderr-Meldung + `process.exit(1)`), baut `McpServer`, registriert Tools, verbindet `StdioServerTransport`. **Nie `console.log`** (stdout ist der MCP-Kanal) — Diagnose nur über `console.error`. |
+| `src/api.ts` | Dünner HTTP-Client: `getTasks()`, `getProjects()`, `getCategories()`, `createTask(task)`, `patchTask(id, patch)`, `health()`. Timeout 10 s, Fehler → `ApiError` mit deutscher Meldung (Status + Text). Kein `DELETE`-Aufruf vorhanden (AC-17). |
+| `src/logic.ts` | **Reine Funktionen ohne I/O** (unit-getestet): `resolveProject(projects, {id?, name?})`, `nextTaskNumber(tasks)`, `newTaskId()`, `buildNewTask(input, ctx)`, `planPatch(date)` / `unplanPatch()`, `groupDayPlan(tasks, dateKey, todayKey)`, `nextSteps(tasks, projectId)`, `resolveCategories(cats, names)`, `findTask(tasks, {id?, number?})`, `formatTaskLine(task, projectName)`, `envKind(url)`, `dateKey(Date)`. |
+| `src/tools.ts` | Registriert die 13 Tools (Zod-Schemas, deutsche Beschreibungen) und verdrahtet `api` + `logic`. Jede Antwort: `content: [{type:'text', text: <deutscher Kurztext>}]` + `structuredContent: {…}`. Fehler → `isError: true` mit Klartext. |
+
+Root: `package.json` → `build` erweitert um `cd apps/mcp && npm run build`; CI bekommt einen Schritt „Install mcp dependencies" (`npm install` in `apps/mcp`). `.gitignore` deckt `dist` bereits ab (Muster `dist`).
+
+### Werkzeugschnitt (13 Tools)
+| Tool | Input (Zod) | Backend-Aufrufe | Rückgabe |
+|---|---|---|---|
+| `umgebung_info` | – | `GET /health` | url, ok, kind (`dev`/`prod`/`unbekannt`) |
+| `projekte_auflisten` | `nurAktive?: bool` | projects, tasks | Liste {id, name, kind, active, offen} |
+| `tasks_auflisten` | `projektId?`, `projektName?`, `inklusiveErledigte?` | projects, tasks | Projekt + Tasks (Flags) |
+| `naechste_schritte` | `projektId?`, `projektName?` | projects, tasks | ★-Tasks; leer → Hinweis + Anzahl offener |
+| `tagesplan` | `datum?: YYYY-MM-DD` | tasks, projects | {geplant[], faellig[], ueberfaellig[]} |
+| `inbox` | – | tasks | Tasks ohne Projekt |
+| `tasks_suchen` | `suche`, `inklusiveErledigte?` | tasks, projects | ≤50 Treffer |
+| `task_anlegen` | `title`, `projektId?`, `projektName?`, `beschreibung?`, `faelligAm?`, `prioritaet?`, `kategorien?: string[]`, `planenFuer?` | projects, categories, tasks (für Nummer), `POST /api/tasks` | neuer Task |
+| `task_planen` | `taskId?`/`taskNummer?`, `datum` | tasks, `PATCH` | Task |
+| `task_planung_entfernen` | `taskId?`/`taskNummer?` | tasks, `PATCH` | Task |
+| `task_faelligkeit_setzen` | `taskId?`/`taskNummer?`, `datum: YYYY-MM-DD \| null` | tasks, `PATCH` | Task |
+| `task_stern` | `taskId?`/`taskNummer?`, `stern: bool` | tasks, `PATCH` | Task |
+| `task_abhaken` | `taskId?`/`taskNummer?`, `erledigt?: bool = true` | tasks, `PATCH` | Task (+ Hinweis bei Wiederholung) |
+
+Projektnamen-Auflösung: exakt (case-insensitiv) → sonst „enthält" → 0 Treffer = Fehler „Projekt … nicht gefunden", >1 = Fehler mit Kandidatenliste (die KI fragt dann nach). Nur nicht archivierte Projekte.
+
+### Datenfluss-Regeln
+- **Datum:** Tools nehmen ausschließlich `YYYY-MM-DD` (die KI rechnet „morgen" selbst um; `umgebung_info` liefert dafür zusätzlich `heute` als lokalen Datums-Key des MCP-Prozesses). `todayDate` = Key; `dueDate` = lokale Mitternacht als ISO-String.
+- **Planen-Invariante** (aus `gtdInvariants` im Store): `todayDate` setzen ⇒ `starred=true`, `someday=false`.
+- **Nummer:** `max(number)+1` aus `GET /api/tasks` (Store-Konvention; Server vergibt nichts). Bei leerer DB: 1.
+- **Task-Objekt beim Anlegen** spiegelt `store.addTask`: `id=task-<base36 zeit>-<base36 zufall>`, `assigneeIds=['u-me']`, `recurrence='none'`, `priority='medium'`, `categoryIds=[]`, `sortOrder=0`, `createdAt/updatedAt=jetzt`.
+- **Activity-Log:** nicht beschrieben (Client-Konvention, kein AC). Trade-off dokumentiert: die Web-App sieht KI-Änderungen beim nächsten Refresh (#86 Auto-Refresh), aber ohne Log-Eintrag „erstellt von KI". Kandidat für ein Folge-Issue.
+
+### Antwortformat (für Sprachausgabe)
+Text kompakt und vorlesbar, z. B. `★ #142 Angebot schreiben (fällig 16.09., hoch)`; Gruppen als Überschriften. `structuredContent` enthält dieselben Daten maschinenlesbar.
+
+### Tests
+- `scripts/mcp.test.ts` (tsx, in `npm test` + `run-tests.mjs` als **TC-A10**): testet nur `logic.ts` mit Fixture-Tasks — keine Netzverbindung.
+- Manuell (Test-Manager): MCP-Server gegen Dev starten, Tools per MCP-Inspector-Skript oder Claude Code aufrufen; die vier Beispiel-Dialoge.
+
+### Trade-offs
+- **stdio statt HTTP-MCP:** deckt Entscheidung 1/3 (lokal) ab; HTTP kommt mit #89.
+- **Eigenes `package.json` statt Root-Deps:** hält SDK/Zod aus dem Web-Bundle heraus; Preis: ein Install-Schritt mehr in CI.
+- **Kein Cache:** jede Tool-Antwort lädt frisch (Datenmenge im Alltag < 2.000 Tasks, LAN-Latenz vernachlässigbar), dafür nie veraltete Antworten neben der Web-App.
+- **Zod v4 mit MCP-SDK 1.30:** unterstützt; falls Inkompatibilität, Fallback auf Zod 3.x (Developer entscheidet, dokumentiert).
