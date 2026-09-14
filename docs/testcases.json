@@ -1450,6 +1450,26 @@
           "bemerkung": "Playwright 11/11: Web-Link+Deeplink als Chip (korrekte href/target), Ungültig-Guard, 2 Links server-persistiert (task.links), Entfernen. Mobile-Build grün; Gerätetest Deeplink offen."
         }
       ]
+    },
+    {
+      "id": "TC-A11",
+      "bereich": "Auto-Tests",
+      "titel": "MCP-Server-Logik: Tagesplan-Gruppierung, Nummernvergabe, Projektauflösung, Planen ⇒ ★ (#88)",
+      "erwartung": "groupDayPlan gruppiert geplant > fällig > überfällig (jeder Task einmal, Zukunft ohne überfällig); nextTaskNumber = max+1; resolveProject exakt/Teiltreffer/mehrdeutig/unbekannt; buildNewTask/planPatch setzen ★ und someday=false; findTask per id/#N; envKind dev/prod.",
+      "typ": "auto",
+      "quelle": "scripts/mcp.test.ts",
+      "regression": true,
+      "laeufe": []
+    },
+    {
+      "id": "TC-M67",
+      "bereich": "Runde 7",
+      "titel": "#88 MCP-Server: 13 Werkzeuge gegen Dev-Server (stdio), Pflicht-Variable, kein Löschen",
+      "erwartung": "Ohne TM_API_URL bricht der Start mit Exit 1 und deutscher Meldung ab. Mit Dev-URL: umgebung_info meldet dev+erreichbar; projekte_auflisten/tasks_auflisten/naechste_schritte/tagesplan/inbox/tasks_suchen liefern korrekte Gruppen; task_anlegen vergibt max+1, landet im Projekt bzw. der Inbox; task_planen setzt todayDate+★; task_faelligkeit_setzen/task_stern/task_abhaken patchen korrekt; unbekanntes Projekt/mehrdeutig → Fehlertext; kein DELETE im Code. Die vier Beispiel-Dialoge aus #88 sind in Claude Code durchführbar.",
+      "typ": "manuell",
+      "quelle": "docs/pipeline/mcp-server.md",
+      "regression": true,
+      "laeufe": []
     }
   ]
 }

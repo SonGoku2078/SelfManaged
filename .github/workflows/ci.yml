@@ -25,5 +25,9 @@ jobs:
         run: npm install
         working-directory: server
 
+      - name: Install MCP-server dependencies
+        run: npm install
+        working-directory: apps/mcp
+
       - name: Typecheck + build (frontend + server)
         run: npm run build
