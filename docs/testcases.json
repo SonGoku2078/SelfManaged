@@ -1,5 +1,5 @@
 {
-  "updated": "2026-07-09",
+  "updated": "2026-09-14",
   "hinweis": "Zentrale Testfalldatenbank. Auto-Fälle werden von scripts/run-tests.mjs aktualisiert; manuelle Läufe trägt der Test-Manager ein. Anzeige: Web-App → 🧪 Testreport.",
   "cases": [
     {
@@ -48,6 +48,11 @@
         },
         {
           "datum": "2026-07-09",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-09-14",
           "ergebnis": "pass",
           "bemerkung": ""
         }
@@ -101,6 +106,11 @@
           "datum": "2026-07-09",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -152,6 +162,11 @@
           "datum": "2026-07-09",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -186,6 +201,11 @@
         },
         {
           "datum": "2026-07-09",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-09-14",
           "ergebnis": "pass",
           "bemerkung": ""
         }
@@ -224,6 +244,11 @@
           "datum": "2026-07-09",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -255,6 +280,11 @@
           "datum": "2026-07-09",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -266,7 +296,13 @@
       "typ": "auto",
       "quelle": "scripts/evernote.test.ts",
       "regression": true,
-      "laeufe": []
+      "laeufe": [
+        {
+          "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        }
+      ]
     },
     {
       "id": "TC-A10",
@@ -1459,7 +1495,13 @@
       "typ": "auto",
       "quelle": "scripts/mcp.test.ts",
       "regression": true,
-      "laeufe": []
+      "laeufe": [
+        {
+          "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        }
+      ]
     },
     {
       "id": "TC-M67",
@@ -1469,7 +1511,13 @@
       "typ": "manuell",
       "quelle": "docs/pipeline/mcp-server.md",
       "regression": true,
-      "laeufe": []
+      "laeufe": [
+        {
+          "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": "Rauchtest smoke.mjs 25/25 + Ad-hoc 23/23 gegen Dev (dev.db): 13 Tools, kein Lösch-Tool, Pflicht-Variable (fehlt/leer/ohne http → Exit 1), Server aus → Fehlertext ohne Absturz, mehrdeutiges Projekt → Kandidaten, Kategorie unbekannt → Fehler, planenFuer ⇒ ★, Tagesplan-Gruppen, abhaken/rückgängig, Wiederholungs-Hinweis. Offen: Dialoge in Claude Code + Claude-Desktop-Einrichtung (User)."
+        }
+      ]
     }
   ]
 }

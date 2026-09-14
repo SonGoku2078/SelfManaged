@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | testdesign-done |
-| Nächste Rolle | /test-manager |
-| Owner-Rolle | test-designer |
+| Status | gate-go |
+| Nächste Rolle | /cicd-engineer |
+| Owner-Rolle | test-manager |
 | Datum | 2026-09-14 |
 | Issue | https://github.com/SonGoku2078/Task-Manager/issues/88 |
 | Folge-Issues | #89 (Handy/Cloud + Auth), #90 (Sprachausgabe, nur Merkposten) |
@@ -15,6 +15,7 @@
 > - 2026-09-14 architecture-done (apps/mcp, 13 Tools, logic.ts unit-testbar) → /developer
 > - 2026-09-14 implementation-done (Branch feature/mcp-server, Rauchtest 25/25 gegen Dev) → /test-designer
 > - 2026-09-14 testdesign-done (TF-01…TF-21) → /test-manager
+> - 2026-09-14 gate-go (Auto + Smoke 25/25 + Ad-hoc 23/23, 0 Defekte; TF-20 beim User) → /cicd-engineer
 
 ## 0. Ausgangslage (aus der Grill-me-Session)
 
@@ -219,3 +220,29 @@ Text kompakt und vorlesbar, z. B. `★ #142 Angebot schreiben (fällig 16.09., h
 |---|---|---|---|---|
 | Dev (`localhost:3002`, `dev.db`) | ✅ | ✅ | ✅ | User |
 | Prod (`192.168.8.50:3001`) | — | verboten | verboten | User (Alltag, nach Freigabe) |
+
+## 5. Testausführung & Gate
+
+### Test Results (2026-09-14, Dev `localhost:3002` / `dev.db`, Prod nicht berührt)
+| Block | Ergebnis |
+|---|---|
+| Auto TC-A11 `scripts/mcp.test.ts` | ✅ PASS (via `npm test` und `run-tests.mjs --skip-builds`) |
+| Auto Regression TC-A01…A10 | ✅ PASS (unverändert) |
+| Build `npm run build` (Web + Server + MCP) | ✅ PASS |
+| Smoke TC-M67 `apps/mcp/smoke.mjs` | ✅ 25/25 |
+| Ad-hoc TF-02/05/06/11/15/18/19 | ✅ 23/23 |
+| Lint | 40 Befunde, alle vorbestehend auf master, 0 in neuen Dateien |
+
+Abdeckung je Testfall: TF-01 ✅ · TF-02 ✅ · TF-03 ✅ · TF-04 ✅ (Review: `.mcp.json` Dev, README-JSON mit `\`) · TF-05 ✅ (112 → 18 aktive) · TF-06 ✅ (mehrdeutig „linkedin" → Kandidaten; 3 offen / 15 gesamt) · TF-07 ✅ · TF-08 ✅ · TF-09 ✅ · TF-10 ✅ · TF-11 ✅ (Nummer max+1 = #1230/#1231; Server-Objekt `assigneeIds=[u-me]`, `recurrence=none`) · TF-12 ✅ · TF-13 ✅ · TF-14 ✅ · TF-15 ✅ (inkl. Wiederholungs-Hinweis an #1085, wieder geöffnet) · TF-16 ✅ · TF-17 ✅ (`grep -i delete apps/mcp/src` = 1 Kommentar) · TF-18 ✅ · TF-19 ✅ · TF-20 ⏳ User · TF-21 ✅
+
+### Defekte
+Keine. Zwei Beobachtungen (Minor, kein Fix nötig):
+- Bei Schema-Verstößen (z. B. `datum="morgen"`) rahmt das MCP-SDK die deutsche Meldung englisch ein („Input validation error … Datum im Format YYYY-MM-DD at datum"). Die KI versteht beides; die fachlichen Fehler (Projekt, Kategorie, Datum-Plausibilität) sind rein deutsch.
+- Vom Rauchtest bleiben erledigte Tasks „MCP-Rauchtest …" in `dev.db` zurück (nur Dev; beim nächsten PROD→DEV-Import weg).
+
+### Nozbe-Vergleich
+Nicht anwendbar (keine UI). GTD-Semantik (★ = Nächste Aktion, Heute-Marker ≠ Termin) in Beschreibungen verifiziert (TF-19).
+
+### Quality Gate Decision
+**GATE: GO.** Alle automatisierten und Integrationsprüfungen bestanden, keine Defekte. Offen bleibt ausschließlich der Anwender-Nachweis (TF-20: vier Dialoge in Claude Code nach Neustart, Claude-Desktop-Einrichtung gegen Prod) — analog zu den Gerätetests früherer Runden.
+Owner-Role: `/cicd-engineer`
