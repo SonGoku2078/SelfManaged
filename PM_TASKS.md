@@ -78,7 +78,7 @@ Features gebrieft, beim Requirements Engineer in Arbeit.
 | ID | Feature | Status | Issue | Owner |
 |----|---------|---------| -----|-------|
 | — | Alle Tier-1-Features abgeschlossen | done | docs/pipeline/* | — |
-| #88 | **MCP-Server: Sprach-Assistent (Claude Desktop/Code)** — lesen/planen/anlegen/abhaken, kein Löschen; Folge: #89 Handy+Auth, #90 Sprachausgabe | new → req-engineer | [#88](https://github.com/SonGoku2078/Task-Manager/issues/88) · docs/pipeline/mcp-server.md | orchestrator |
+| #88 | **MCP-Server: Sprach-Assistent (Claude Desktop/Code)** — lesen/planen/anlegen/abhaken, kein Löschen; Folge: #89 Handy+Auth, #90 Sprachausgabe | done (PR #91 gemergt 2026-09-14) | [#88](https://github.com/SonGoku2078/Task-Manager/issues/88) · docs/pipeline/mcp-server.md | User: Claude Desktop einrichten |
 | 015 | App-Logo & Icons (SelfManaged) | COMPLETED (PR #50, 2026-07-16) | [#49](https://github.com/SonGoku2078/Task-Manager/issues/49) | — |
 
 ### Briefing → /req-engineer: App-Logo & Icons (SelfManaged)
