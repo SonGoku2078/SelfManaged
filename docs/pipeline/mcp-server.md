@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | architecture-done |
-| Nächste Rolle | /developer |
-| Owner-Rolle | architect |
+| Status | implementation-done |
+| Nächste Rolle | /test-designer |
+| Owner-Rolle | developer |
 | Datum | 2026-09-14 |
 | Issue | https://github.com/SonGoku2078/Task-Manager/issues/88 |
 | Folge-Issues | #89 (Handy/Cloud + Auth), #90 (Sprachausgabe, nur Merkposten) |
@@ -13,6 +13,7 @@
 > - 2026-09-14 Grill-me-Session abgeschlossen, Entscheidungen 1–8 im Issue #88 festgehalten → /req-engineer
 > - 2026-09-14 requirements-done (AC-1…AC-21) → /architect
 > - 2026-09-14 architecture-done (apps/mcp, 13 Tools, logic.ts unit-testbar) → /developer
+> - 2026-09-14 implementation-done (Branch feature/mcp-server, Rauchtest 25/25 gegen Dev) → /test-designer
 
 ## 0. Ausgangslage (aus der Grill-me-Session)
 
@@ -151,3 +152,28 @@ Text kompakt und vorlesbar, z. B. `★ #142 Angebot schreiben (fällig 16.09., h
 - **Eigenes `package.json` statt Root-Deps:** hält SDK/Zod aus dem Web-Bundle heraus; Preis: ein Install-Schritt mehr in CI.
 - **Kein Cache:** jede Tool-Antwort lädt frisch (Datenmenge im Alltag < 2.000 Tasks, LAN-Latenz vernachlässigbar), dafür nie veraltete Antworten neben der Web-App.
 - **Zod v4 mit MCP-SDK 1.30:** unterstützt; falls Inkompatibilität, Fallback auf Zod 3.x (Developer entscheidet, dokumentiert).
+
+## 3. Implementierung
+- **Branch:** `feature/mcp-server`
+- **Commit:** `feat(mcp): MCP-Server fuer KI-Zugriff …` (siehe `git log feature/mcp-server`)
+- **Files Changed:**
+  - `apps/mcp/package.json`, `apps/mcp/tsconfig.json` — eigenes Paket (`@modelcontextprotocol/sdk` 1.30, `zod` 4.6), Scripts `build`/`start`/`smoke`
+  - `apps/mcp/src/index.ts` — Einstieg; `TM_API_URL` Pflicht (Exit 1 + deutsche Meldung), stdio-Transport, Diagnose nur auf stderr
+  - `apps/mcp/src/api.ts` — HTTP-Client (GET/POST/PATCH, Timeout 10 s, `ApiError`), **kein DELETE**
+  - `apps/mcp/src/logic.ts` — reine Logik: Projektauflösung, Nummernvergabe, Task-Aufbau, Patches (Planen ⇒ ★/kein Someday), Tagesplan-Gruppierung, Suche, Formatierung, `envKind`
+  - `apps/mcp/src/tools.ts` — 13 Werkzeuge mit deutschen Beschreibungen inkl. GTD-Hinweis (★ ≠ Termin, nachfragen statt raten); Text + `structuredContent`; Fehler als `isError`
+  - `apps/mcp/smoke.mjs` — Rauchtest per stdio-Client gegen `TM_API_URL` (verweigert Prod-URLs)
+  - `scripts/mcp.test.ts` — Unit-Test der Logik (TC-A11), in `npm test` + `run-tests.mjs`
+  - `docs/testcases.json` — TC-A11 (auto), TC-M67 (manuell)
+  - `package.json` — `build` baut `apps/mcp` mit; neue Scripts `build:mcp`, `mcp:dev`; `test` inkl. mcp.test
+  - `.github/workflows/ci.yml` — Schritt „Install MCP-server dependencies"
+  - `.mcp.json` — Claude Code → Dev (`http://localhost:3002`)
+  - `README.md` — Abschnitt „KI-Zugriff per MCP" (Claude Desktop → Prod, Beispiele, Ausblick #89/#90)
+- **Abweichungen von der Architektur:** keine. TC-Nummern: TC-A10/TC-M64 waren bereits belegt (#47) → TC-A11/TC-M67.
+- **Local Verification:**
+  - [x] `npm run build` (Web + Server + MCP) grün
+  - [x] `npm test` grün inkl. `mcp.test.ts`
+  - [x] Start ohne `TM_API_URL` → Exit 1 mit Meldung (AC-2)
+  - [x] Rauchtest `TM_API_URL=http://localhost:3002 node apps/mcp/smoke.mjs` gegen Dev (`dev.db`): **25/25 Prüfungen bestanden** — 13 Tools registriert, kein Lösch-Tool, dev erkannt, anlegen (Projekt/Inbox, Nummer max+1), planen ⇒ todayDate+★, Tagesplan-Gruppen (kein Doppel), Fälligkeit setzen/entfernen, Stern, Suche, abhaken, Fehlertexte (unbekanntes Projekt/#N)
+  - [x] `npm run lint`: 40 Befunde, alle vorbestehend auf master, keiner in neuen Dateien
+  - [x] Prod nicht angesprochen (Rauchtest verweigert `192.168.8.50`/`:3001`)
