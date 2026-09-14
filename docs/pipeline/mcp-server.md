@@ -2,15 +2,16 @@
 
 | Feld | Wert |
 |---|---|
-| Status | new |
-| Nächste Rolle | /req-engineer |
-| Owner-Rolle | orchestrator |
+| Status | requirements-done |
+| Nächste Rolle | /architect |
+| Owner-Rolle | req-engineer |
 | Datum | 2026-09-14 |
 | Issue | https://github.com/SonGoku2078/Task-Manager/issues/88 |
 | Folge-Issues | #89 (Handy/Cloud + Auth), #90 (Sprachausgabe, nur Merkposten) |
 
 > Orchestrator-Log:
 > - 2026-09-14 Grill-me-Session abgeschlossen, Entscheidungen 1–8 im Issue #88 festgehalten → /req-engineer
+> - 2026-09-14 requirements-done (AC-1…AC-21) → /architect
 
 ## 0. Ausgangslage (aus der Grill-me-Session)
 
@@ -38,3 +39,51 @@
 **Werkzeuge (Feinschnitt durch Architekt):** siehe Issue #88, Abschnitt „Werkzeuge für die KI".
 
 **Leitplanke für alle Rollen:** Tests ausschließlich gegen Dev (Port 3002, `dev.db`). Der MCP-Server ist ein reiner API-Konsument; Server-Änderungen nur, wenn ein Werkzeug ohne sie nicht umsetzbar ist (dann im Artefakt begründen).
+
+## 1. Requirements
+- **GitHub Issue:** #88 — `[FEATURE] MCP-Server: Sprach-Assistent liest/plant/erstellt Tasks per KI (Claude Desktop/Code)`
+- **Nozbe-Referenz:** Nozbe bietet selbst keine KI-Schnittstelle; fachlich relevant sind die GTD-Begriffe dieser App (`docs/GTD-FLOW.md`): ★ = Nächste Aktion (Nozbe „Priority"), Heute-Marker = Tagesplan, Fälligkeit = Termin. Die KI muss diese Unterscheidung in den Werkzeugbeschreibungen erklärt bekommen.
+
+### Acceptance Criteria
+**Aufbau & Betrieb**
+- [ ] AC-1 Der MCP-Server liegt unter `apps/mcp/`, ist TypeScript, spricht stdio (MCP-Standard für lokale Clients) und baut mit `npm run build` (Root) mit. CI (`.github/workflows/ci.yml`) bleibt grün.
+- [ ] AC-2 Die Base-URL des Task-Manager-Servers kommt ausschließlich aus der Umgebungsvariable `TM_API_URL`. Fehlt sie oder ist sie leer, beendet sich der Prozess mit Exit-Code 1 und einer deutschen Meldung, die den Variablennamen und ein Beispiel nennt. Es gibt keinen eingebauten Standardwert.
+- [ ] AC-3 Das Werkzeug `umgebung_info` liefert die konfigurierte Base-URL, das Ergebnis von `GET /health` und die Kennzeichnung `dev`/`prod`/`unbekannt` (Port 3002 → dev, sonst per Heuristik: `192.168.8.50:3001` → prod).
+- [ ] AC-4 `.mcp.json` im Repo registriert den Server für Claude Code mit `TM_API_URL=http://localhost:3002` (Dev). Ein README-Abschnitt beschreibt die Claude-Desktop-Einrichtung mit der Prod-URL (nur Doku, kein Prod-Zugriff durch Tests).
+
+**Lesen**
+- [ ] AC-5 `projekte_auflisten`: alle nicht archivierten Projekte und Areas mit `id`, `name`, `kind`, `active` (Someday = inaktiv), Anzahl offener Tasks. Optionaler Filter `nurAktive`.
+- [ ] AC-6 `tasks_auflisten`: offene Tasks eines Projekts (per `projektId` **oder** per `projektName`, Name unscharf/case-insensitiv, mehrdeutig → Fehler mit Kandidatenliste) in App-Reihenfolge (`sortOrder`, `createdAt`), je Task: `id`, `number`, `title`, `starred`, `todayDate`, `thisWeek`, `dueDate`, `priority`, `someday`, `waiting`. Erledigte Tasks nur mit `inklusiveErledigte=true`.
+- [ ] AC-7 `naechste_schritte`: nur die **★-Tasks** (offen, nicht Someday) eines Projekts; leer → Antworttext „Keine Nächste Aktion markiert" plus Anzahl offener Tasks, damit die KI Sternen anbieten kann (Entscheidung 8).
+- [ ] AC-8 `tagesplan`: für ein Datum (`YYYY-MM-DD`, Standard heute; „morgen" wird von der KI in ein Datum übersetzt) drei gekennzeichnete Gruppen: `geplant` (todayDate = Datum), `faellig` (dueDate am Datum), `ueberfaellig` (dueDate < Datum, offen; nur wenn Datum = heute oder Vergangenheit sinnvoll, sonst leer). Jeder Task genau einmal, Gruppe nach Priorität geplant > fällig > überfällig.
+- [ ] AC-9 `inbox`: offene Tasks ohne Projekt (nicht Someday), gleiche Felder wie AC-6.
+- [ ] AC-10 `tasks_suchen`: Volltext in Titel + Beschreibung (case-insensitiv), Standard nur offene, max. 50 Treffer, mit Projektname.
+
+**Schreiben** (alle liefern den geänderten Task zurück)
+- [ ] AC-11 `task_anlegen`: Pflicht `title`; optional `projektId`/`projektName`, `beschreibung`, `faelligAm` (YYYY-MM-DD), `prioritaet` (low/medium/high), `kategorien` (Namen → ids, unbekannte → Fehler), `planenFuer` (YYYY-MM-DD → todayDate). Der Server vergibt keine Nummer: das Werkzeug ermittelt `number = max(number)+1` über `GET /api/tasks`. `id` im App-Format (`task-<zeit>-<zufall>`), `assigneeIds=['u-me']`, `recurrence='none'`.
+- [ ] AC-12 `task_planen`: setzt `todayDate` auf ein Datum; setzt gemäß App-Invariante zugleich `starred=true` und `someday=false`. `task_planung_entfernen`: `todayDate=null` (Stern bleibt).
+- [ ] AC-13 `task_faelligkeit_setzen`: `dueDate` auf Datum (Mitternacht lokal) oder `null` zum Entfernen.
+- [ ] AC-14 `task_stern`: `starred` true/false.
+- [ ] AC-15 `task_abhaken`: `completed=true`, `completedAt=jetzt`; `erledigt=false` macht es rückgängig. Wiederkehrende Tasks: nur abhaken, **kein** Folge-Task erzeugen (das Spawnen ist Client-Logik; Hinweis im Rückgabetext, damit die KI es sagt).
+- [ ] AC-16 Task-Adressierung in allen Schreibwerkzeugen per `taskId` **oder** `taskNummer` (#N). Unbekannt → Fehler „Task nicht gefunden".
+
+**Sicherheit & Grenzen**
+- [ ] AC-17 Es existiert kein Werkzeug, das Tasks löscht oder Projekte/Kategorien/Members anlegt, ändert oder löscht. Der Adapter ruft nie `DELETE` auf.
+- [ ] AC-18 Jeder Fehler (Netz, 4xx/5xx, Validierung) kommt als MCP-Fehlerantwort mit deutscher Klartextmeldung zurück, nie als Prozessabsturz.
+- [ ] AC-19 Alle Werkzeugbeschreibungen sind deutsch und erklären der KI: ★ = Nächste Aktion; „für Tag planen" ≠ „fällig am"; bei fehlendem Projekt/Datum nachfragen statt raten.
+
+**Nachweis**
+- [ ] AC-20 Die vier Beispiel-Dialoge aus Issue #88 sind in Claude Code gegen Dev (`localhost:3002`, `dev.db`) durchführbar; Prod wird nicht angesprochen.
+- [ ] AC-21 Automatisierter Test (`scripts/mcp.test.ts`, in `npm test` + `run-tests.mjs`) prüft die reine Logik: Datumsgruppierung des Tagesplans, Nummernvergabe, Projektnamen-Auflösung (eindeutig/mehrdeutig/unbekannt), Invariante Planen ⇒ Stern.
+
+### Technical Interfaces
+- **Input:** MCP-Tool-Aufrufe über stdio (JSON-RPC) vom KI-Client. Konfiguration: `TM_API_URL`.
+- **Output:** Tool-Ergebnisse als Text (kompakt, deutsch, für Sprachausgabe geeignet) **plus** strukturierte Daten (JSON) im selben Ergebnis, damit die KI sowohl vorlesen als auch weiterarbeiten kann.
+- **Backend:** ausschließlich bestehende REST-Endpunkte `GET/POST/PATCH /api/tasks`, `GET /api/projects`, `GET /api/categories`, `GET /health`. Keine Server-Änderung vorgesehen.
+
+### Data Model
+Keine neuen Tabellen/Felder. Verwendete Task-Felder: `id, number, title, description, projectId, dueDate, priority, categoryIds, completed, completedAt, starred, someday, thisWeek, todayDate, waiting, sortOrder, createdAt`. Projekt: `id, name, kind, active, archived`. Kategorie: `id, name`.
+
+### Nicht-funktional
+- Node 24 (wie CI), keine neuen Root-Abhängigkeiten außer `@modelcontextprotocol/sdk` + `zod` in `apps/mcp/package.json`.
+- Antwortzeit: eine Tool-Antwort = maximal zwei API-Aufrufe (Tasks + Projekte), keine Caches (die App ändert Daten parallel).
