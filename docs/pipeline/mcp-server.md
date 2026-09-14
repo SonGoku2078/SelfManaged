@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | gate-go |
-| Nächste Rolle | /cicd-engineer |
-| Owner-Rolle | test-manager |
+| Status | gate-go (PR #91 offen, CI grün, Merge wartet auf User) |
+| Nächste Rolle | User (Merge PR #91) → /cicd-engineer (Abschluss) |
+| Owner-Rolle | cicd-engineer |
 | Datum | 2026-09-14 |
 | Issue | https://github.com/SonGoku2078/Task-Manager/issues/88 |
 | Folge-Issues | #89 (Handy/Cloud + Auth), #90 (Sprachausgabe, nur Merkposten) |
@@ -16,6 +16,7 @@
 > - 2026-09-14 implementation-done (Branch feature/mcp-server, Rauchtest 25/25 gegen Dev) → /test-designer
 > - 2026-09-14 testdesign-done (TF-01…TF-21) → /test-manager
 > - 2026-09-14 gate-go (Auto + Smoke 25/25 + Ad-hoc 23/23, 0 Defekte; TF-20 beim User) → /cicd-engineer
+> - 2026-09-14 PR #91 erstellt, CI grün; Merge vom Auto-Modus blockiert → Entscheidung User
 
 ## 0. Ausgangslage (aus der Grill-me-Session)
 
@@ -246,3 +247,14 @@ Nicht anwendbar (keine UI). GTD-Semantik (★ = Nächste Aktion, Heute-Marker �
 ### Quality Gate Decision
 **GATE: GO.** Alle automatisierten und Integrationsprüfungen bestanden, keine Defekte. Offen bleibt ausschließlich der Anwender-Nachweis (TF-20: vier Dialoge in Claude Code nach Neustart, Claude-Desktop-Einrichtung gegen Prod) — analog zu den Gerätetests früherer Runden.
 Owner-Role: `/cicd-engineer`
+
+## 6. CI/CD & Deployment
+- **PR:** https://github.com/SonGoku2078/Task-Manager/pull/91 (`feature/mcp-server` → `master`, „Closes #88")
+- **CI:** build ✅ pass (Web + Server + MCP, neuer Install-Schritt), GitGuardian ✅ pass
+- **Code-Review (self):** keine Debug-Ausgaben auf stdout (MCP-Kanal), keine TODOs, kein DELETE, deutsche Fehlertexte, Lint sauber in neuen Dateien
+- **Merge:** ⏳ **wartet auf den User** — der Auto-Modus hat `gh pr merge` als „Merge ohne Review" blockiert. Vorgesehen: Squash-Merge, Branch löschen. Danach schließt GitHub #88 automatisch.
+- **Deployment:** kein Web-/Server-Deploy nötig (Prod unverändert). Der MCP-Server läuft auf dem PC des Users aus dem Repo:
+  1. `git pull` auf master, `cd apps/mcp && npm install`, `npm run build:mcp`
+  2. Claude Code: neu starten im Repo → `.mcp.json` lädt den Server gegen Dev (`npm run dev:server` muss laufen)
+  3. Claude Desktop: Konfig laut README-Abschnitt „KI-Zugriff per MCP" mit `TM_API_URL=http://192.168.8.50:3001`, Claude Desktop neu starten
+- **Nach dem Merge (Orchestrator/CI-CD):** Status → `done`, PM_TASKS-Zeile → done, Abschluss-Commit `docs(pipeline): #88 abgeschlossen`.
