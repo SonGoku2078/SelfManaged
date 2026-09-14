@@ -4,7 +4,7 @@
 //
 // Konfiguration: TM_API_URL (Pflicht, kein Standardwert — Entscheidung 7).
 //   Dev:  TM_API_URL=http://localhost:3002
-//   Prod: TM_API_URL=http://192.168.8.50:3001
+//   Prod: TM_API_URL=http://192.168.8.187:3001
 //
 // stdout ist der MCP-Kanal — Diagnose ausschließlich über stderr.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -19,7 +19,7 @@ function readBaseUrl(): string {
     console.error(
       'FEHLER: Umgebungsvariable TM_API_URL fehlt. Sie muss auf den Task-Manager-Server zeigen, z. B.\n' +
         '  TM_API_URL=http://localhost:3002        (Entwicklung)\n' +
-        '  TM_API_URL=http://192.168.8.50:3001     (Produktion)\n' +
+        '  TM_API_URL=http://192.168.8.187:3001     (Produktion)\n' +
         'Es gibt absichtlich keinen Standardwert.',
     );
     process.exit(1);

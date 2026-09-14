@@ -12,9 +12,9 @@ development stays local.
 
 | | **Production** (daily use) | **Development & Test** (local sandbox) |
 |---|---|---|
-| Runs on | `192.168.8.50` (Docker Compose, `~/server/`) | this machine |
+| Runs on | `192.168.8.187` (Docker Compose, `~/server/`; IP per DHCP — bei Wechsel `scripts/deploy.local.json` + MCP-Konfigs anpassen) | this machine |
 | Start | managed by Docker (`unless-stopped`) | `npm run dev:server` **and** `npm run dev` (two terminals) |
-| Open | http://192.168.8.50:3001 | http://localhost:5173 |
+| Open | http://192.168.8.187:3001 | http://localhost:5173 |
 | Database | on the server | `~/.task-manager/dev.db` |
 | Marker | — | 🚧 **red "ENTWICKLUNG & TEST" banner** |
 | Deploy | `npm run release` (SSH → git pull → compose up --build; config: `scripts/deploy.local.json`, see `.example`) | — |
@@ -34,7 +34,7 @@ der Prozess nicht):
 | Umgebung | `TM_API_URL` |
 |---|---|
 | Dev (Tests, Claude Code via `.mcp.json`) | `http://localhost:3002` |
-| Prod (Alltag, Claude Desktop) | `http://192.168.8.50:3001` |
+| Prod (Alltag, Claude Desktop) | `http://192.168.8.187:3001` |
 
 ```bash
 npm run build:mcp                 # baut apps/mcp/dist (Teil von npm run build)
@@ -50,7 +50,7 @@ npm run mcp:dev                   # startet den Server gegen Dev (stdio; zum Deb
     "task-manager": {
       "command": "node",
       "args": ["C:\\Pfad\\zum\\Repo\\apps\\mcp\\dist\\index.js"],
-      "env": { "TM_API_URL": "http://192.168.8.50:3001" }
+      "env": { "TM_API_URL": "http://192.168.8.187:3001" }
     }
   }
 }

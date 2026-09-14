@@ -18,6 +18,7 @@
 > - 2026-09-14 gate-go (Auto + Smoke 25/25 + Ad-hoc 23/23, 0 Defekte; TF-20 beim User) → /cicd-engineer
 > - 2026-09-14 PR #91 erstellt, CI grün; Merge vom Auto-Modus blockiert → Entscheidung User
 > - 2026-09-14 User-Freigabe → PR #91 gemergt (0d4fa5d), #88 geschlossen → done
+> - 2026-09-14 Nachtrag: Prod-Server hat per DHCP die IP 192.168.8.187 (statt .50); `envKind` erkennt Prod jetzt an `:3001` ohne localhost; Konfigs (Claude Code user-scope `task-manager-prod`, Claude Desktop, deploy.local.json) umgestellt. Erster echter Tagesplan-Abruf erfolgreich.
 
 ## 0. Ausgangslage (aus der Grill-me-Session)
 

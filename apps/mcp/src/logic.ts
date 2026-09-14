@@ -241,8 +241,10 @@ export function completePatch(done: boolean, now = new Date()): Record<string, u
 export function envKind(url: string): 'dev' | 'prod' | 'unbekannt' {
   try {
     const u = new URL(url);
+    const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
     if (u.port === '3002') return 'dev';
-    if (u.hostname === '192.168.8.50' && u.port === '3001') return 'prod';
+    // Prod = der LAN-Server auf :3001; die IP kommt per DHCP und kann wechseln.
+    if (u.port === '3001' && !local) return 'prod';
     return 'unbekannt';
   } catch {
     return 'unbekannt';

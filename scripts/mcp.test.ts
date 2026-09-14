@@ -128,6 +128,8 @@ assert.throws(() => findTask(pt, {}), /taskId oder taskNummer/);
 // ── Umgebung & Darstellung ────────────────────────────────────────────────
 assert.equal(envKind('http://localhost:3002'), 'dev');
 assert.equal(envKind('http://192.168.8.50:3001'), 'prod');
+assert.equal(envKind('http://192.168.8.187:3001'), 'prod', 'Prod-IP kann per DHCP wechseln');
+assert.equal(envKind('http://localhost:3001'), 'unbekannt', 'lokaler :3001 ist kein Prod');
 assert.equal(envKind('http://example.org'), 'unbekannt');
 assert.equal(envKind('kaputt'), 'unbekannt');
 assert.equal(dateKey(new Date(2026, 0, 5)), '2026-01-05');
