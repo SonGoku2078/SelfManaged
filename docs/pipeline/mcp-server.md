@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | architecture-done |
-| Nächste Rolle | /developer |
-| Owner-Rolle | architect |
+| Status | gate-go (PR #91 offen, CI grün, Merge wartet auf User) |
+| Nächste Rolle | User (Merge PR #91) → /cicd-engineer (Abschluss) |
+| Owner-Rolle | cicd-engineer |
 | Datum | 2026-09-14 |
 | Issue | https://github.com/SonGoku2078/Task-Manager/issues/88 |
 | Folge-Issues | #89 (Handy/Cloud + Auth), #90 (Sprachausgabe, nur Merkposten) |
@@ -13,6 +13,10 @@
 > - 2026-09-14 Grill-me-Session abgeschlossen, Entscheidungen 1–8 im Issue #88 festgehalten → /req-engineer
 > - 2026-09-14 requirements-done (AC-1…AC-21) → /architect
 > - 2026-09-14 architecture-done (apps/mcp, 13 Tools, logic.ts unit-testbar) → /developer
+> - 2026-09-14 implementation-done (Branch feature/mcp-server, Rauchtest 25/25 gegen Dev) → /test-designer
+> - 2026-09-14 testdesign-done (TF-01…TF-21) → /test-manager
+> - 2026-09-14 gate-go (Auto + Smoke 25/25 + Ad-hoc 23/23, 0 Defekte; TF-20 beim User) → /cicd-engineer
+> - 2026-09-14 PR #91 erstellt, CI grün; Merge vom Auto-Modus blockiert → Entscheidung User
 
 ## 0. Ausgangslage (aus der Grill-me-Session)
 
@@ -151,3 +155,106 @@ Text kompakt und vorlesbar, z. B. `★ #142 Angebot schreiben (fällig 16.09., h
 - **Eigenes `package.json` statt Root-Deps:** hält SDK/Zod aus dem Web-Bundle heraus; Preis: ein Install-Schritt mehr in CI.
 - **Kein Cache:** jede Tool-Antwort lädt frisch (Datenmenge im Alltag < 2.000 Tasks, LAN-Latenz vernachlässigbar), dafür nie veraltete Antworten neben der Web-App.
 - **Zod v4 mit MCP-SDK 1.30:** unterstützt; falls Inkompatibilität, Fallback auf Zod 3.x (Developer entscheidet, dokumentiert).
+
+## 3. Implementierung
+- **Branch:** `feature/mcp-server`
+- **Commit:** `feat(mcp): MCP-Server fuer KI-Zugriff …` (siehe `git log feature/mcp-server`)
+- **Files Changed:**
+  - `apps/mcp/package.json`, `apps/mcp/tsconfig.json` — eigenes Paket (`@modelcontextprotocol/sdk` 1.30, `zod` 4.6), Scripts `build`/`start`/`smoke`
+  - `apps/mcp/src/index.ts` — Einstieg; `TM_API_URL` Pflicht (Exit 1 + deutsche Meldung), stdio-Transport, Diagnose nur auf stderr
+  - `apps/mcp/src/api.ts` — HTTP-Client (GET/POST/PATCH, Timeout 10 s, `ApiError`), **kein DELETE**
+  - `apps/mcp/src/logic.ts` — reine Logik: Projektauflösung, Nummernvergabe, Task-Aufbau, Patches (Planen ⇒ ★/kein Someday), Tagesplan-Gruppierung, Suche, Formatierung, `envKind`
+  - `apps/mcp/src/tools.ts` — 13 Werkzeuge mit deutschen Beschreibungen inkl. GTD-Hinweis (★ ≠ Termin, nachfragen statt raten); Text + `structuredContent`; Fehler als `isError`
+  - `apps/mcp/smoke.mjs` — Rauchtest per stdio-Client gegen `TM_API_URL` (verweigert Prod-URLs)
+  - `scripts/mcp.test.ts` — Unit-Test der Logik (TC-A11), in `npm test` + `run-tests.mjs`
+  - `docs/testcases.json` — TC-A11 (auto), TC-M67 (manuell)
+  - `package.json` — `build` baut `apps/mcp` mit; neue Scripts `build:mcp`, `mcp:dev`; `test` inkl. mcp.test
+  - `.github/workflows/ci.yml` — Schritt „Install MCP-server dependencies"
+  - `.mcp.json` — Claude Code → Dev (`http://localhost:3002`)
+  - `README.md` — Abschnitt „KI-Zugriff per MCP" (Claude Desktop → Prod, Beispiele, Ausblick #89/#90)
+- **Abweichungen von der Architektur:** keine. TC-Nummern: TC-A10/TC-M64 waren bereits belegt (#47) → TC-A11/TC-M67.
+- **Local Verification:**
+  - [x] `npm run build` (Web + Server + MCP) grün
+  - [x] `npm test` grün inkl. `mcp.test.ts`
+  - [x] Start ohne `TM_API_URL` → Exit 1 mit Meldung (AC-2)
+  - [x] Rauchtest `TM_API_URL=http://localhost:3002 node apps/mcp/smoke.mjs` gegen Dev (`dev.db`): **25/25 Prüfungen bestanden** — 13 Tools registriert, kein Lösch-Tool, dev erkannt, anlegen (Projekt/Inbox, Nummer max+1), planen ⇒ todayDate+★, Tagesplan-Gruppen (kein Doppel), Fälligkeit setzen/entfernen, Stern, Suche, abhaken, Fehlertexte (unbekanntes Projekt/#N)
+  - [x] `npm run lint`: 40 Befunde, alle vorbestehend auf master, keiner in neuen Dateien
+  - [x] Prod nicht angesprochen (Rauchtest verweigert `192.168.8.50`/`:3001`)
+
+## 4. Testdesign
+
+### Teststrategie
+- **Auto (TC-A11, `scripts/mcp.test.ts`):** reine Logik ohne Server — Tagesplan-Gruppierung, Nummernvergabe, Projekt-/Kategorienauflösung, Task-Aufbau, Patches, Adressierung, Umgebungserkennung, Formatierung.
+- **Integration (TC-M67, `apps/mcp/smoke.mjs`):** echter stdio-MCP-Client startet den gebauten Server gegen **Dev** (`dev.db`), ruft alle 13 Werkzeuge auf, prüft Antworten + Datenwirkung. Verweigert Prod-URLs.
+- **Ergänzende Integrationsfälle (Test-Manager, Ad-hoc-Client gegen Dev):** Fehlerpfade, die der Rauchtest nicht abdeckt.
+- **Build/CI:** `npm run build` inkl. MCP; CI-Workflow mit neuem Install-Schritt.
+- **Anwender (User):** die vier Beispiel-Dialoge in Claude Code (`.mcp.json`) und Einrichtung in Claude Desktop gegen Prod — wie in früheren Runden „Gerätetest beim User".
+- **Nozbe-Vergleich:** nicht anwendbar (keine UI; Nozbe hat keine KI-Schnittstelle). Fachliche Treue = GTD-Begriffe aus `docs/GTD-FLOW.md` in den Werkzeugbeschreibungen.
+
+### Testfälle (je AC)
+| TF | AC | Prüfung | Art |
+|---|---|---|---|
+| TF-01 | AC-1 | `npm run build` baut `apps/mcp/dist`; `ci.yml` installiert `apps/mcp` | Build |
+| TF-02 | AC-2 | Start ohne/leer `TM_API_URL` → Exit 1, Meldung nennt Variable + Beispiele; ohne `http` → Exit 1 | Manuell |
+| TF-03 | AC-3 | `umgebung_info` gegen Dev → `umgebung=dev`, `erreichbar=true`, `heute` | Smoke |
+| TF-04 | AC-4 | `.mcp.json` zeigt auf Dev; README-Abschnitt mit Prod-Konfig (gültiges JSON, doppelte Backslashes) | Review |
+| TF-05 | AC-5 | `projekte_auflisten` liefert nicht archivierte Projekte mit `offen`-Zähler; `nurAktive` filtert Someday | Smoke + Ad-hoc |
+| TF-06 | AC-6 | `tasks_auflisten` per Name (unscharf), mehrdeutiger Name → Fehler mit Kandidaten, unbekannt → Fehler, `inklusiveErledigte` | Smoke + Ad-hoc |
+| TF-07 | AC-7 | `naechste_schritte`: nur ★; nach `task_stern=false` nicht mehr enthalten; leer → Hinweis mit Anzahl offener | Smoke + Auto |
+| TF-08 | AC-8 | `tagesplan` heute/morgen: Gruppen geplant/fällig/überfällig, kein Task doppelt, Zukunft ohne überfällig | Auto + Smoke |
+| TF-09 | AC-9 | `inbox` enthält projektlosen neuen Task, nicht Someday | Smoke + Auto |
+| TF-10 | AC-10 | `tasks_suchen` Titel+Beschreibung, Standard nur offen, `inklusiveErledigte` | Smoke + Auto |
+| TF-11 | AC-11 | `task_anlegen`: Nummer max+1, Projekt/Inbox, Termin, Priorität, unbekannte Kategorie → Fehler, `planenFuer` ⇒ ★ | Smoke + Auto + Ad-hoc |
+| TF-12 | AC-12 | `task_planen` ⇒ `todayDate` + ★ + `someday=false`; `task_planung_entfernen` ⇒ `todayDate=null`, ★ bleibt | Smoke + Auto |
+| TF-13 | AC-13 | `task_faelligkeit_setzen` Datum / null | Smoke |
+| TF-14 | AC-14 | `task_stern` true/false | Smoke |
+| TF-15 | AC-15 | `task_abhaken` setzt `completed`+`completedAt`; `erledigt=false` macht rückgängig; Hinweis bei Wiederholung | Smoke + Ad-hoc |
+| TF-16 | AC-16 | Adressierung per `taskNummer` und `taskId`; unbekannt → „nicht gefunden" | Smoke |
+| TF-17 | AC-17 | Kein Tool-Name mit Löschen; `grep -i delete apps/mcp/src` nur Kommentar | Smoke + Review |
+| TF-18 | AC-18 | Ungültiges Datum („morgen"), Server aus → Fehlerantwort statt Absturz; Prozess lebt weiter | Ad-hoc |
+| TF-19 | AC-19 | Alle Beschreibungen deutsch, enthalten ★-/Termin-Unterscheidung und Nachfrage-Hinweis | Review |
+| TF-20 | AC-20 | Vier Beispiel-Dialoge in Claude Code gegen Dev | User |
+| TF-21 | AC-21 | `npm test` enthält `mcp.test.ts`; `run-tests.mjs` schreibt TC-A11 | Auto |
+
+### Test-Matrix
+| Umgebung | Auto | Smoke | Ad-hoc | Dialoge |
+|---|---|---|---|---|
+| Dev (`localhost:3002`, `dev.db`) | ✅ | ✅ | ✅ | User |
+| Prod (`192.168.8.50:3001`) | — | verboten | verboten | User (Alltag, nach Freigabe) |
+
+## 5. Testausführung & Gate
+
+### Test Results (2026-09-14, Dev `localhost:3002` / `dev.db`, Prod nicht berührt)
+| Block | Ergebnis |
+|---|---|
+| Auto TC-A11 `scripts/mcp.test.ts` | ✅ PASS (via `npm test` und `run-tests.mjs --skip-builds`) |
+| Auto Regression TC-A01…A10 | ✅ PASS (unverändert) |
+| Build `npm run build` (Web + Server + MCP) | ✅ PASS |
+| Smoke TC-M67 `apps/mcp/smoke.mjs` | ✅ 25/25 |
+| Ad-hoc TF-02/05/06/11/15/18/19 | ✅ 23/23 |
+| Lint | 40 Befunde, alle vorbestehend auf master, 0 in neuen Dateien |
+
+Abdeckung je Testfall: TF-01 ✅ · TF-02 ✅ · TF-03 ✅ · TF-04 ✅ (Review: `.mcp.json` Dev, README-JSON mit `\`) · TF-05 ✅ (112 → 18 aktive) · TF-06 ✅ (mehrdeutig „linkedin" → Kandidaten; 3 offen / 15 gesamt) · TF-07 ✅ · TF-08 ✅ · TF-09 ✅ · TF-10 ✅ · TF-11 ✅ (Nummer max+1 = #1230/#1231; Server-Objekt `assigneeIds=[u-me]`, `recurrence=none`) · TF-12 ✅ · TF-13 ✅ · TF-14 ✅ · TF-15 ✅ (inkl. Wiederholungs-Hinweis an #1085, wieder geöffnet) · TF-16 ✅ · TF-17 ✅ (`grep -i delete apps/mcp/src` = 1 Kommentar) · TF-18 ✅ · TF-19 ✅ · TF-20 ⏳ User · TF-21 ✅
+
+### Defekte
+Keine. Zwei Beobachtungen (Minor, kein Fix nötig):
+- Bei Schema-Verstößen (z. B. `datum="morgen"`) rahmt das MCP-SDK die deutsche Meldung englisch ein („Input validation error … Datum im Format YYYY-MM-DD at datum"). Die KI versteht beides; die fachlichen Fehler (Projekt, Kategorie, Datum-Plausibilität) sind rein deutsch.
+- Vom Rauchtest bleiben erledigte Tasks „MCP-Rauchtest …" in `dev.db` zurück (nur Dev; beim nächsten PROD→DEV-Import weg).
+
+### Nozbe-Vergleich
+Nicht anwendbar (keine UI). GTD-Semantik (★ = Nächste Aktion, Heute-Marker ≠ Termin) in Beschreibungen verifiziert (TF-19).
+
+### Quality Gate Decision
+**GATE: GO.** Alle automatisierten und Integrationsprüfungen bestanden, keine Defekte. Offen bleibt ausschließlich der Anwender-Nachweis (TF-20: vier Dialoge in Claude Code nach Neustart, Claude-Desktop-Einrichtung gegen Prod) — analog zu den Gerätetests früherer Runden.
+Owner-Role: `/cicd-engineer`
+
+## 6. CI/CD & Deployment
+- **PR:** https://github.com/SonGoku2078/Task-Manager/pull/91 (`feature/mcp-server` → `master`, „Closes #88")
+- **CI:** build ✅ pass (Web + Server + MCP, neuer Install-Schritt), GitGuardian ✅ pass
+- **Code-Review (self):** keine Debug-Ausgaben auf stdout (MCP-Kanal), keine TODOs, kein DELETE, deutsche Fehlertexte, Lint sauber in neuen Dateien
+- **Merge:** ⏳ **wartet auf den User** — der Auto-Modus hat `gh pr merge` als „Merge ohne Review" blockiert. Vorgesehen: Squash-Merge, Branch löschen. Danach schließt GitHub #88 automatisch.
+- **Deployment:** kein Web-/Server-Deploy nötig (Prod unverändert). Der MCP-Server läuft auf dem PC des Users aus dem Repo:
+  1. `git pull` auf master, `cd apps/mcp && npm install`, `npm run build:mcp`
+  2. Claude Code: neu starten im Repo → `.mcp.json` lädt den Server gegen Dev (`npm run dev:server` muss laufen)
+  3. Claude Desktop: Konfig laut README-Abschnitt „KI-Zugriff per MCP" mit `TM_API_URL=http://192.168.8.50:3001`, Claude Desktop neu starten
+- **Nach dem Merge (Orchestrator/CI-CD):** Status → `done`, PM_TASKS-Zeile → done, Abschluss-Commit `docs(pipeline): #88 abgeschlossen`.

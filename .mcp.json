@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "task-manager": {
+      "command": "node",
+      "args": [
+        "apps/mcp/dist/index.js"
+      ],
+      "env": {
+        "TM_API_URL": "http://localhost:3002"
+      }
+    }
+  }
+}

@@ -21,6 +21,44 @@ development stays local.
 
 Check which version runs where: **Einstellungen → „Version & Umgebung"** (#56).
 
+## 🤖 KI-Zugriff per MCP (Sprach-Assistent, #88)
+
+Ein eigener **MCP-Server** (`apps/mcp/`) gibt Claude Desktop / Claude Code Werkzeuge auf den
+Task Manager: Projekte und Tasks lesen, Tagesplan abfragen, Tasks anlegen, für einen Tag planen,
+Fälligkeit setzen, ★ setzen, abhaken. **Kein Löschen, keine Projektverwaltung.** Der Server ist ein
+dünner Adapter auf die bestehende REST-API und braucht keine Server-Änderung.
+
+Die Ziel-Adresse kommt **ausschließlich** aus `TM_API_URL` (kein Standardwert; ohne Variable startet
+der Prozess nicht):
+
+| Umgebung | `TM_API_URL` |
+|---|---|
+| Dev (Tests, Claude Code via `.mcp.json`) | `http://localhost:3002` |
+| Prod (Alltag, Claude Desktop) | `http://192.168.8.50:3001` |
+
+```bash
+npm run build:mcp                 # baut apps/mcp/dist (Teil von npm run build)
+npm run mcp:dev                   # startet den Server gegen Dev (stdio; zum Debuggen)
+```
+
+**Claude Code:** `.mcp.json` im Repo registriert den Server automatisch gegen Dev (`npm run dev:server` muss laufen).
+
+**Claude Desktop (Prod):** in `%APPDATA%\Claude\claude_desktop_config.json` eintragen (Pfad anpassen):
+```json
+{
+  "mcpServers": {
+    "task-manager": {
+      "command": "node",
+      "args": ["C:\\Pfad\\zum\\Repo\\apps\\mcp\\dist\\index.js"],
+      "env": { "TM_API_URL": "http://192.168.8.50:3001" }
+    }
+  }
+}
+```
+Danach Claude Desktop neu starten. Sprache: Windows-Diktat (Win+H) ins Eingabefeld. Beispiele:
+„Was ist mein Plan für heute?", „Welche nächsten Schritte hat Projekt X?", „Leg einen Task … im Projekt … an",
+„Lass uns den Plan für morgen definieren". Ausblick: Handy-/Cloud-Zugriff mit Auth (#89), Sprachausgabe (#90).
+
 ### CI / Releases (GitHub)
 - **CI** (`.github/workflows/ci.yml`): every push/PR builds + typechecks the app — a gate that
   catches build-breaking changes before they land.
