@@ -57,7 +57,7 @@ npm run mcp:dev                   # startet den Server gegen Dev (stdio; zum Deb
 ```
 Danach Claude Desktop neu starten. Sprache: Windows-Diktat (Win+H) ins Eingabefeld. Beispiele:
 „Was ist mein Plan für heute?", „Welche nächsten Schritte hat Projekt X?", „Leg einen Task … im Projekt … an",
-„Lass uns den Plan für morgen definieren". Ausblick: Handy-/Cloud-Zugriff mit Auth (#89), Sprachausgabe (#90).
+„Lass uns den Plan für morgen definieren".
 
 ### CI / Releases (GitHub)
 - **CI** (`.github/workflows/ci.yml`): every push/PR builds + typechecks the app — a gate that
