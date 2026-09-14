@@ -79,8 +79,8 @@ const GTD_HINWEIS =
 export function registerTools(server: McpServer, api: TaskManagerApi): void {
   const projectName = (projects: ApiProject[], id: string | null) => projects.find((p) => p.id === id)?.name ?? null;
   const lines = (tasks: ApiTask[], projects: ApiProject[], todayKey: string) =>
-    tasks.map((t) => `- ${formatTaskLine(t, projectName(projects, t.projectId), todayKey)}`).join('\n');
-  const summaries = (tasks: ApiTask[], projects: ApiProject[]) => tasks.map((t) => taskSummary(t, projectName(projects, t.projectId)));
+    tasks.map((t) => `- ${formatTaskLine(t, projectName(projects, t.projectId), todayKey, api.baseUrl)}`).join('\n');
+  const summaries = (tasks: ApiTask[], projects: ApiProject[]) => tasks.map((t) => taskSummary(t, projectName(projects, t.projectId), api.baseUrl));
 
   // Gemeinsamer Abschluss der Schreibwerkzeuge: Task per Referenz finden, PATCH, Antwort.
   const patchByRef = async (ref: { taskId?: string; taskNummer?: number }, patch: Record<string, unknown>, verb: string) => {
@@ -88,7 +88,7 @@ export function registerTools(server: McpServer, api: TaskManagerApi): void {
     const task = findTask(tasks, { id: ref.taskId, number: ref.taskNummer });
     const updated = await api.patchTask(task.id, patch);
     const pn = projectName(projects, updated.projectId);
-    return { updated, text: `${verb}: ${formatTaskLine(updated, pn, dateKey(new Date()))}`, summary: taskSummary(updated, pn) };
+    return { updated, text: `${verb}: ${formatTaskLine(updated, pn, dateKey(new Date()), api.baseUrl)}`, summary: taskSummary(updated, pn, api.baseUrl) };
   };
 
   // ── Info ──────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ export function registerTools(server: McpServer, api: TaskManagerApi): void {
     'umgebung_info',
     {
       title: 'Umgebung',
-      description: `Zeigt, mit welchem Task-Manager-Server dieser MCP-Server verbunden ist (dev/prod), ob er erreichbar ist, und das heutige Datum. ${GTD_HINWEIS}`,
+      description: `Zeigt, mit welchem Task-Manager-Server dieser MCP-Server verbunden ist (dev/prod), ob er erreichbar ist, und das heutige Datum. Jede Task-Zeile in den Antworten endet mit einem Link (→ http://…/#/t/<nummer>), der den Task in der Web-App öffnet — gib ihn dem Nutzer mit, wenn er mehr sehen will. ${GTD_HINWEIS}`,
       inputSchema: {},
     },
     guard(async () => {
@@ -259,8 +259,8 @@ export function registerTools(server: McpServer, api: TaskManagerApi): void {
       );
       const created = await api.createTask(task);
       const pn = project?.name ?? null;
-      const text = `Angelegt: ${formatTaskLine(created, pn, dateKey(new Date()))}${pn ? '' : ' — in der Inbox (kein Projekt)'}`;
-      return ok(text, { task: taskSummary(created, pn) });
+      const text = `Angelegt: ${formatTaskLine(created, pn, dateKey(new Date()), api.baseUrl)}${pn ? '' : ' — in der Inbox (kein Projekt)'}`;
+      return ok(text, { task: taskSummary(created, pn, api.baseUrl) });
     }),
   );
 

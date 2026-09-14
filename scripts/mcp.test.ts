@@ -6,7 +6,7 @@ import assert from 'node:assert';
 import {
   buildNewTask, completePatch, dateKey, dateKeyToIso, envKind, findTask, formatTaskLine,
   groupDayPlan, inboxTasks, LogicError, nextSteps, nextTaskNumber, newTaskId, planPatch,
-  resolveCategories, resolveProject, searchTasks, tasksOfProject, unplanPatch,
+  resolveCategories, resolveProject, searchTasks, tasksOfProject, taskSummary, taskUrl, unplanPatch,
   type ApiProject, type ApiTask,
 } from '../apps/mcp/src/logic';
 
@@ -135,5 +135,10 @@ assert.equal(envKind('kaputt'), 'unbekannt');
 assert.equal(dateKey(new Date(2026, 0, 5)), '2026-01-05');
 const line = formatTaskLine(task({ number: 42, title: 'Angebot', starred: true, priority: 'high', dueDate: iso('2026-09-10') }), 'Website', today);
 assert.equal(line, '★ #42 Angebot (Website, fällig 10.09.2026 (überfällig), hoch)');
+// Deep-Links in die Web-App (#/t/<nummer>).
+assert.equal(taskUrl('http://192.168.8.187:3001/', 42), 'http://192.168.8.187:3001/#/t/42', 'Slash am Ende wird entfernt');
+assert.equal(formatTaskLine(task({ number: 7, title: 'X' }), null, today, 'http://localhost:3002'), '#7 X → http://localhost:3002/#/t/7');
+assert.equal(taskSummary(task({ number: 7, title: 'X' }), null, 'http://localhost:3002').url, 'http://localhost:3002/#/t/7');
+assert.equal(taskSummary(task({ number: 7, title: 'X' })).url, null, 'ohne baseUrl kein Link');
 
 console.log('mcp.test.ts: alle Prüfungen bestanden ✔');

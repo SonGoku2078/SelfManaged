@@ -258,8 +258,11 @@ const fmtDate = (key: string): string => {
   return `${d}.${m}.${y}`;
 };
 
-// Kompakte, vorlesbare Zeile: „★ #142 Angebot schreiben (Projekt X, fällig 16.09.2026, hoch)".
-export function formatTaskLine(t: ApiTask, projectName?: string | null, todayKey?: string): string {
+// Deep-Link in die Web-App (App öffnet #/t/<nummer> im Task-Detail).
+export const taskUrl = (baseUrl: string, number: number): string => `${baseUrl.replace(/\/+$/, '')}/#/t/${number}`;
+
+// Kompakte, vorlesbare Zeile: „★ #142 Angebot schreiben (Projekt X, fällig 16.09.2026, hoch) → http://…/#/t/142".
+export function formatTaskLine(t: ApiTask, projectName?: string | null, todayKey?: string, baseUrl?: string): string {
   const flags: string[] = [];
   if (projectName) flags.push(projectName);
   const dk = dueKey(t);
@@ -271,14 +274,16 @@ export function formatTaskLine(t: ApiTask, projectName?: string | null, todayKey
   if (t.waiting) flags.push(`wartet${t.waitingFor ? ` auf ${t.waitingFor}` : ''}`);
   if (t.completed) flags.push('erledigt');
   const star = t.starred ? '★ ' : '';
-  return `${star}#${t.number} ${t.title}${flags.length ? ` (${flags.join(', ')})` : ''}`;
+  const link = baseUrl ? ` → ${taskUrl(baseUrl, t.number)}` : '';
+  return `${star}#${t.number} ${t.title}${flags.length ? ` (${flags.join(', ')})` : ''}${link}`;
 }
 
 // Schlanke Struktur für structuredContent.
-export function taskSummary(t: ApiTask, projectName?: string | null) {
+export function taskSummary(t: ApiTask, projectName?: string | null, baseUrl?: string) {
   return {
     id: t.id,
     number: t.number,
+    url: baseUrl ? taskUrl(baseUrl, t.number) : null,
     title: t.title,
     projectId: t.projectId,
     projectName: projectName ?? null,
