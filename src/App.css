@@ -57,6 +57,7 @@
 
 [data-theme='dark'] .quick-add,
 [data-theme='dark'] .filter-bar,
+[data-theme='dark'] .view-search-bar,
 [data-theme='dark'] .search-bar,
 [data-theme='dark'] .category-bar,
 [data-theme='dark'] .bulk-bar {
@@ -348,6 +349,7 @@ body {
   .task-detail-panel,
   .quick-add,
   .filter-bar,
+  .view-search-bar,
   .category-bar,
   .bulk-bar,
   .search-bar,

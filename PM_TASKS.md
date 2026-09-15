@@ -3,7 +3,7 @@
 **Projekt:** Nozbe Task Manager Clone (HTML MVP)  
 **Repository:** https://github.com/SonGoku2078/Task-Manager  
 **Status:** ✅ Tier-1 Core Features COMPLETE (14/14) — MVP funktionsfähig  
-**Last Updated:** 2026-09-14
+**Last Updated:** 2026-09-15
 
 ---
 
@@ -96,31 +96,20 @@ Features gebrieft, beim Requirements Engineer in Arbeit.
 
 ## 📊 Active GitHub Issues
 
-Durchlauf 2026-07-05/06 ABGESCHLOSSEN: 22 Issues umgesetzt + geschlossen (Batches Phase 0, A, B, C, D), nur #8 geparkt. Details: docs/pipeline/issue-*.md; Testnachweise: docs/testcases.json (🧪 Testreport). Deploy erst nach User-Approve.
+**Stand 2026-09-15: 61 Issues geschlossen, 10 offen.** Der Durchlauf 2026-07-05/06 (Batches Phase 0, A–D) ist vollständig abgeschlossen — inklusive des früher als geparkt geführten #8. Details: docs/pipeline/issue-*.md; Testnachweise: docs/testcases.json (🧪 Testreport). Deploy erst nach User-Approve.
 
-| # | Title | Batch | Status |
-|---|-------|-------|--------|
-| #23 | Heute-Flag | Phase 0 | ✅ done (Commit 43db2b2) |
-| #24 | ICS-Feed | Phase 0 | ✅ done |
-| #11 | Uhrzeit erfassen | Phase 0 | ✅ done (mit #24) |
-| #13 | Bulk Next Week/Someday | Phase 0 | zu verifizieren (BulkActionBar existiert) |
-| #6 | Emails als Tasks | Phase 0 | zu verifizieren (Extension existiert) |
-| #2 | Zeilenabstand Beschreibung | A | offen |
-| #7 | Custom-Recurrence Layout | A | offen |
-| #12 | Projektfarbe ganze Zeile | A | offen |
-| #19 | Quick-Add auf Suchseite entfernen | A | offen |
-| #10 | Drop-Indikator Areas | A | offen |
-| #1 | Subtask-Meta-Zeile | A | offen |
-| #18 | Bug: Next Week zeigt Zukunfts-Task | B | offen |
-| #17 | Bug: verlinkte Projekte fallen aus Sektionen | B | offen |
-| #15 | Bug: Someday-View springt bei Archivieren | B | offen |
-| #26 | Task in Sektion erstellen | C | offen |
-| #9 | Suche im Projekt | C | offen |
-| #16 | Kommentare mehrzeilig + editierbar | C | offen |
-| #14 | Mehrere Projekte selektieren | C | offen |
-| #4/#25/#5 | Attachments-UX (Vorschau, Paste, Drag&Drop) | D | offen |
-| #3 | Pomodoro-Timer | D | offen |
-| #8 | Evernote-Integration | — | 🅿 geparkt (braucht Recherche/Klärung, bleibt offen) |
+| # | Title | Priorität | Status |
+|---|-------|-----------|--------|
+| #92 | Suchfeld in Next Week, Someday und Kalender (+ `/` fokussiert lokal) | HIGH | offen — neu 2026-09-15 |
+| #93 | Suche im Kalender-Raster + Unteraufgaben als Treffer | HIGH | offen — neu 2026-09-15, baut auf #92 |
+| #59 | Bug: Doppelstart des Servers löscht kurzzeitig das DB-Lock | — | offen |
+| #45 | Bug: Evernote-Integration funktioniert nicht | — | offen |
+| #44 | Bug: Task kann nicht ans Ende verschoben werden | — | offen |
+| #43 | App: Start dauert zu lange | — | offen |
+| #41 | Bericht über Arbeitszeiten via Pomodoro | — | offen |
+| #46 | Focus Music | — | offen |
+| #30 | Reminder-Vorschau auf dem Smartphone + Widget | — | offen |
+| #90 | [Ausblick] Sprachausgabe für den KI-Assistenten (Jarvis) | — | offen |
 
 ---
 

@@ -14,6 +14,7 @@ import TaskDetailPanel from './components/TaskDetailPanel';
 import ProjectDetailPanel from './components/ProjectDetailPanel';
 import CategoryBar from './components/CategoryBar';
 import FilterBar from './components/FilterBar';
+import ViewSearch from './components/ViewSearch';
 import BulkActionBar from './components/BulkActionBar';
 import TemplatesGallery from './components/TemplatesGallery';
 import ActivityLog from './components/ActivityLog';
@@ -173,6 +174,11 @@ function App() {
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const quickAddRef = useRef<HTMLInputElement>(null);
+  // Focus target for `/` (#92 AC8). Only one search field exists at a time —
+  // either the FilterBar's, ViewSearch's, or the global search view's — so a
+  // single ref can serve all of them. Stays null in views without one, which
+  // is what makes the fallback to the global search view work.
+  const localSearchRef = useRef<HTMLInputElement>(null);
   const [projRefPickerOpen, setProjRefPickerOpen] = useState(false);
   const [projRefQuery, setProjRefQuery] = useState('');
 
@@ -278,7 +284,10 @@ function App() {
         quickAddRef.current?.focus();
       } else if (e.key === '/') {
         e.preventDefault();
-        setView('search');
+        // Search where you are; fall back to the global view where the
+        // current view has no search field of its own (#92 AC8).
+        if (localSearchRef.current) localSearchRef.current.focus();
+        else setView('search');
       } else if (e.key === 'Delete') {
         const id = useStore.getState().ui.selectedTaskId;
         if (id) {
@@ -392,6 +401,16 @@ function App() {
   const isFilterView = ['inbox', 'priority', 'projects', 'today', 'search', 'categories', 'custom', 'completed'].includes(
     ui.currentView
   );
+
+  // Views that carry a task list but no FilterBar get a search-only bar (#92).
+  // Search only — these views stay out of FILTERABLE_VIEWS, so the remaining
+  // filter controls would be switches without effect. The week/rolling grid is
+  // excluded on purpose: it bypasses selectVisibleTasks entirely (see #93).
+  const showViewSearch =
+    !isFilterView &&
+    (ui.currentView === 'nextweek' ||
+      ui.currentView === 'someday' ||
+      (ui.currentView === 'calendar' && !weekGridActive));
 
   const appEnv = (import.meta.env.VITE_APP_ENV as string | undefined) ?? 'development';
 
@@ -770,6 +789,7 @@ function App() {
           <div className="search-bar">
             <span className="search-icon">🔍</span>
             <input
+              ref={localSearchRef}
               autoFocus
               type="text"
               className="search-input"
@@ -809,7 +829,9 @@ function App() {
 
         {ui.currentView === 'categories' && <CategoryBar />}
 
-        {isFilterView && <FilterBar />}
+        {isFilterView && <FilterBar searchRef={localSearchRef} />}
+
+        {showViewSearch && <ViewSearch ref={localSearchRef} />}
 
         {bulkMode && (
           <BulkActionBar
@@ -836,11 +858,16 @@ function App() {
           <TaskList
             tasks={visibleTasks}
             emptyHint={
-              ui.currentView === 'priority'
-                ? 'Keine offenen Aufgaben — markiere welche mit ★ oder setze Priorität Hoch.'
-                : ui.currentView === 'completed'
-                  ? 'Noch nichts erledigt (oder Filter zu eng). Hake Aufgaben ab — sie erscheinen hier.'
-                  : undefined
+              // An active search explains the empty list better than the
+              // view's own hint would — and naming the view hints at the
+              // classic dead end: the task sits in a different one (#92 AC7).
+              ui.searchQuery.trim() && ui.currentView !== 'search'
+                ? `Keine Treffer für „${ui.searchQuery}" in dieser Ansicht. 🔍 Suchen in der Seitenleiste durchsucht alle Aufgaben.`
+                : ui.currentView === 'priority'
+                  ? 'Keine offenen Aufgaben — markiere welche mit ★ oder setze Priorität Hoch.'
+                  : ui.currentView === 'completed'
+                    ? 'Noch nichts erledigt (oder Filter zu eng). Hake Aufgaben ab — sie erscheinen hier.'
+                    : undefined
             }
             selectionMode={bulkMode}
             selectedIds={selectedIds}

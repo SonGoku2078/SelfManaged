@@ -1,0 +1,19 @@
+/* Search-only bar for views without a FilterBar (Next Week, Someday,
+   Kalender-Liste — #92). Mirrors the .filter-bar frame (same padding and
+   bottom border) so the field lands at the same height and position as the
+   FilterBar's search in Inbox/Heute/Projekte. Dark theme and print rules live
+   in App.css next to .filter-bar. */
+.view-search-bar {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border-light);
+  background: #fff;
+}
+
+/* Alone in the bar the field would stretch across the whole width; cap it so
+   it keeps the visual weight it has among the FilterBar's other controls. */
+.view-search-bar .filter-search-wrap {
+  flex: 1 1 auto;
+  max-width: 320px;
+}
