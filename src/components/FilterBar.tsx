@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { selectScopeSections } from '../selectors';
 import ClearableInput from './ClearableInput';
+import { SEARCH_PLACEHOLDER } from './ViewSearch';
 import type { Priority, SortField } from '../types';
 import './FilterBar.css';
 
@@ -14,7 +15,13 @@ const SORT_LABELS: Record<SortField, string> = {
   createdAt: 'Erstellt',
 };
 
-export default function FilterBar() {
+export default function FilterBar({
+  searchRef,
+}: {
+  /** Focus target for the `/` shortcut (#92 AC8); shared with ViewSearch,
+      which is never rendered at the same time as the FilterBar. */
+  searchRef?: React.Ref<HTMLInputElement>;
+}) {
   const filters = useStore((s) => s.ui.filters);
   const sortField = useStore((s) => s.ui.sortField);
   const sortDir = useStore((s) => s.ui.sortDir);
@@ -97,10 +104,11 @@ export default function FilterBar() {
         {/* Title filter stays available even with collapsed filters (#9). */}
         {currentView !== 'search' && (
           <ClearableInput
+            ref={searchRef}
             wrapperClassName="filter-search-wrap"
             className="filter-search"
             type="text"
-            placeholder="🔍 Nach Aufgabenname filtern…"
+            placeholder={SEARCH_PLACEHOLDER}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onClear={() => setSearchQuery('')}
@@ -131,10 +139,11 @@ export default function FilterBar() {
           The query resets automatically on view change (setView). */}
       {currentView !== 'search' && (
         <ClearableInput
+          ref={searchRef}
           wrapperClassName="filter-search-wrap"
           className="filter-search"
           type="text"
-          placeholder="🔍 Nach Aufgabenname filtern…"
+          placeholder={SEARCH_PLACEHOLDER}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onClear={() => setSearchQuery('')}
