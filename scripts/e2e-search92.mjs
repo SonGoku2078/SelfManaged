@@ -34,8 +34,16 @@ const del = (id) => fetch(`${API}/api/tasks/${id}`, { method: 'DELETE' });
 const nav = async (page, title) => {
   await page.click(`button.sidebar-item[title="${title}"]`);
   await page.waitForTimeout(400);
+  if (title === 'Kalender') await ensureCalendarList(page);
 };
 const localField = '.view-search-bar input.filter-search, .filter-bar input.filter-search';
+
+// calendarMode ist persistent — diese Suite prueft den Listenmodus und muss
+// ihn daher aktiv herstellen, statt auf den zuletzt gespeicherten zu vertrauen.
+const ensureCalendarList = async (page) => {
+  const btn = page.locator('.cal-mode-btn', { hasText: 'Tag / Liste' });
+  if (await btn.count()) { await btn.click(); await page.waitForTimeout(700); }
+};
 
 const made = [];
 try {

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import {
   weekViewDays,
@@ -7,6 +7,7 @@ import {
   dateKey,
   tasksOnDate,
   isInNextWeekWindow,
+  gridSearchTasks,
 } from '../selectors';
 import type { Task } from '../types';
 import { readTaskIds } from '../dnd';
@@ -63,7 +64,7 @@ export default function WeekView({ mode }: WeekViewProps) {
   const currentDate = useStore((s) => s.ui.currentDate);
   const selectedDates = useStore((s) => s.ui.selectedDates);
   const setCurrentDate = useStore((s) => s.setCurrentDate);
-  const tasks = useStore((s) => s.tasks);
+  const allTasks = useStore((s) => s.tasks);
   const projects = useStore((s) => s.projects);
   const updateTask = useStore((s) => s.updateTask);
   const toggleTask = useStore((s) => s.toggleTask);
@@ -76,9 +77,28 @@ export default function WeekView({ mode }: WeekViewProps) {
   const hourHeight = useStore((s) => s.settings.calendarHourHeight ?? 48);
   const setCalendarHours = useStore((s) => s.setCalendarHours);
   const setCalendarHourHeight = useStore((s) => s.setCalendarHourHeight);
-  const blockers = useStore((s) => s.blockers);
+  const allBlockers = useStore((s) => s.blockers);
   const addBlocker = useStore((s) => s.addBlocker);
   const deleteBlocker = useStore((s) => s.deleteBlocker);
+  const searchQuery = useStore((s) => s.ui.searchQuery);
+  const members = useStore((s) => s.members);
+
+  // #93: the grid bypasses selectVisibleTasks, so it has to apply the search
+  // itself. Filtering once here is what keeps the day columns, the backlog and
+  // the blocker project list from disagreeing with each other.
+  //
+  // A root task survives when it matches OR one of its subtasks matches —
+  // subtasks are only ever rendered nested under their parent, so dropping a
+  // non-matching parent would hide the very subtask that was searched for.
+  const searching = searchQuery.trim() !== '';
+  const tasks = useMemo(
+    () => gridSearchTasks(allTasks, searchQuery, members),
+    [allTasks, searchQuery, members]
+  );
+
+  // Blockers carry no text of their own, so they can never be a hit — while a
+  // search is active they would be the only thing left standing (#93).
+  const blockers = searching ? [] : allBlockers;
 
   const today = new Date();
   const nowMinutes = today.getHours() * 60 + today.getMinutes();
@@ -416,8 +436,10 @@ export default function WeekView({ mode }: WeekViewProps) {
             </button>
           </div>
           <div className="week-blocker-list">
-            {blockers.length === 0 && <span className="week-blocker-empty">Noch keine Blocker.</span>}
-            {blockers.map((b) => {
+            {/* The editor always lists the real blockers — hiding them during a
+                search would make them unmanageable; only the grid hides them. */}
+            {allBlockers.length === 0 && <span className="week-blocker-empty">Noch keine Blocker.</span>}
+            {allBlockers.map((b) => {
               const p = projectById(b.projectId);
               const fromH = Math.floor(b.startMinutes / 60);
               const toH = Math.floor((b.startMinutes + b.durationMin) / 60);

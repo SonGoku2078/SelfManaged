@@ -32,11 +32,17 @@ console.log('TF-M1 — Suche in gruppierter Ansicht (Sektionen)');
 await nav(page, 'Someday');
 const secBefore = await page.locator('.task-section, [class*="section"]').count();
 const allSomeday = await rows(page);
+await type(page, 'qqxxzz-gibt-es-nicht');
+const noHits = await rows(page);
 await type(page, 'a');
 const someFiltered = await rows(page);
 await type(page, '');
 const backToAll = await rows(page);
-ok('TF-M1', 'Suche grenzt die gruppierte Liste ein', someFiltered <= allSomeday, `${allSomeday} -> ${someFiltered}`);
+// Seit #93 kann eine aktive Suche die Liste auch VERGROESSERN: passende
+// Unteraufgaben kommen hinzu, die ohne Suche unter ihrer Elternaufgabe
+// verborgen bleiben. Geprueft wird daher die Wirkung, nicht die Richtung.
+ok('TF-M1', 'Suche ohne Treffer leert die Liste', noHits === 0, `rows=${noHits}`);
+ok('TF-M1', 'Suche veraendert die Liste', someFiltered !== allSomeday || allSomeday === 0, `${allSomeday} -> ${someFiltered}`);
 ok('TF-M1', 'Liste ist nach Leeren wieder vollstaendig', backToAll === allSomeday, `${backToAll} vs ${allSomeday}`);
 ok('TF-M1', 'Gruppenstruktur ueberlebt die Suche', (await page.locator('.task-section, [class*="section"]').count()) === secBefore);
 
@@ -53,8 +59,14 @@ await modeBtn('Woche').click(); await page.waitForTimeout(700);
 const pillWeekSearching = (await page.locator('.task-count-totals').first().innerText().catch(() => '')).trim();
 const fieldGoneInGrid = await page.locator('.view-search-bar').count();
 ok('TF-M3', 'Liste war durch die Suche geleert', listFiltered === 0, `rows=${listFiltered}`);
-ok('TF-M3', 'Suchfeld ist im Raster nicht sichtbar', fieldGoneInGrid === 0);
-ok('TF-M3', 'Summen-Pille schrumpft im Raster NICHT', pillWeekSearching === pillWeekClean,
+// Seit #93 hat auch das Raster ein Suchfeld (vorher bewusst keins).
+ok('TF-M3', 'Suchfeld ist im Raster vorhanden (seit #93)', fieldGoneInGrid === 1, `n=${fieldGoneInGrid}`);
+// Bis #92 filterte das Raster nicht, die Pille durfte daher nicht schrumpfen.
+// Seit #93 filtert es — jetzt MUSS sie mitschrumpfen, sonst stuende eine Zahl
+// neben einer sichtbar leeren Woche. Die Forderung bleibt dieselbe: Raster und
+// Kopfzeile muessen einig sein.
+ok('TF-M3', 'Summen-Pille folgt dem gefilterten Raster (seit #93)',
+  pillWeekSearching !== pillWeekClean && pillWeekSearching.startsWith('0'),
   `ohne Suche="${pillWeekClean}" mit Suche="${pillWeekSearching}"`);
 await modeBtn('Tag / Liste').click(); await page.waitForTimeout(600);
 const queryKept = await page.locator(localField).first().inputValue();

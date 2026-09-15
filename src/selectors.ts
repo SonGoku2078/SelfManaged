@@ -116,6 +116,24 @@ export const matchesSearch = (task: Task, query: string, members: Member[] = [])
   return haystack.includes(q);
 };
 
+// #93: which tasks the week/rolling grid keeps while a search is active. A
+// root task survives when it matches OR one of its subtasks matches — subtasks
+// are only ever rendered nested under their parent, so dropping a non-matching
+// parent would hide the very subtask that was searched for.
+//
+// Shared by WeekView and the header totals (App.tsx) on purpose: the grid
+// filtering while the totals pill kept counting everything would put a number
+// next to an empty week.
+export const gridSearchTasks = (
+  tasks: Task[],
+  query: string,
+  members: Member[] = []
+): Task[] => {
+  if (query.trim() === '') return tasks;
+  const hit = (t: Task) => matchesSearch(t, query, members);
+  return tasks.filter((t) => hit(t) || tasks.some((c) => c.parentId === t.id && hit(c)));
+};
+
 const matchesFilters = (task: Task, ui: UIState) => {
   const f = ui.filters;
   if (f.projectId && task.projectId !== f.projectId) return false;
@@ -318,6 +336,18 @@ export const selectVisibleTasks = (
       result = result.filter((t) => t.dueDate && keys.has(dateKey(t.dueDate)));
       break;
     }
+  }
+
+  // #93: while searching, subtasks become findable in the plain views too.
+  // They are added AFTER the view scoping above and keyed off their parent, so
+  // they inherit the parent's bucket instead of being sorted by their own
+  // fields. That ordering matters: many subtasks carry no projectId even
+  // though their parent does, and almost none carry someday/thisWeek — scoping
+  // them on their own would drop them into the Inbox and leave Someday and
+  // Next Week without any hits at all.
+  if (ui.currentView !== 'search' && ui.searchQuery.trim() !== '') {
+    const scopedIds = new Set(result.map((t) => t.id));
+    result = [...result, ...tasks.filter((t) => t.parentId && scopedIds.has(t.parentId))];
   }
 
   // The FilterBar (project/category/priority/status/date filters) is only shown

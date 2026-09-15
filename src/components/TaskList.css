@@ -721,3 +721,15 @@
 .task-list::-webkit-scrollbar-thumb:hover {
   background: #bbb;
 }
+
+/* #93: parent of a subtask that surfaced as a search hit at root level.
+   Quieter than .task-meta — it is context, not a property of the task. */
+.task-parent-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.85;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

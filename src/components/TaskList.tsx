@@ -531,6 +531,14 @@ export default function TaskList({
           <div className={`task-title ${task.completed || isHolding ? 'completed' : ''}`}>
             {task.title}
           </div>
+          {/* A subtask listed at root level is a search hit (#93). Nested rows
+              omit the project because it is the parent's (#1) — here that same
+              context is missing entirely, so name the parent instead. */}
+          {task.parentId && (
+            <div className="task-parent-hint" title="Unteraufgabe von">
+              ↳ gehört zu: {allTasks.find((p) => p.id === task.parentId)?.title ?? 'unbekannt'}
+            </div>
+          )}
           {renderMeta(task, hideProject, inCompletedSection)}
         </div>
         <div className="task-actions">

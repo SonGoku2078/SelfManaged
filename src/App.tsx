@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from './store';
-import { applyCompletionHold, dateKey, selectVisibleTasks, selectTaskTotals, weekViewDays } from './selectors';
+import { applyCompletionHold, dateKey, selectVisibleTasks, selectTaskTotals, weekViewDays, gridSearchTasks } from './selectors';
 import { fmtFocus } from './pomodoro';
 import { parseQuickAdd } from './quickParse';
 import type { ViewType } from './types';
@@ -316,7 +316,12 @@ function App() {
     const dayKeys = new Set(
       weekViewDays(calendarMode, ui.currentDate, ui.selectedDates).map(dateKey)
     );
-    totalsTasks = tasks.filter((t) => t.dueDate && dayKeys.has(dateKey(t.dueDate)));
+    // #93: the grid filters itself while a search is active, so the totals
+    // must use the same set — otherwise the pill puts a number next to a week
+    // that visibly shows nothing.
+    totalsTasks = gridSearchTasks(tasks, ui.searchQuery, members).filter(
+      (t) => t.dueDate && dayKeys.has(dateKey(t.dueDate))
+    );
   }
   const totals = selectTaskTotals(totalsTasks);
   const showTotalsPill = weekGridActive || TOTALS_VIEWS.has(ui.currentView);
@@ -406,11 +411,13 @@ function App() {
   // Search only — these views stay out of FILTERABLE_VIEWS, so the remaining
   // filter controls would be switches without effect. The week/rolling grid is
   // excluded on purpose: it bypasses selectVisibleTasks entirely (see #93).
+  // The week/rolling grid renders instead of the quick-add + list block, so it
+  // gets its own field above the grid (#93); the rest sits under quick-add.
   const showViewSearch =
     !isFilterView &&
     (ui.currentView === 'nextweek' ||
       ui.currentView === 'someday' ||
-      (ui.currentView === 'calendar' && !weekGridActive));
+      ui.currentView === 'calendar');
 
   const appEnv = (import.meta.env.VITE_APP_ENV as string | undefined) ?? 'development';
 
@@ -700,7 +707,12 @@ function App() {
           </div>
         )}
         {ui.currentView === 'calendar' && calendarMode !== 'list' ? (
-          <WeekView mode={calendarMode} />
+          <>
+            {/* The grid has no quick-add row, so its search field sits directly
+                above the grid, under the mode buttons (#93). */}
+            <ViewSearch ref={localSearchRef} />
+            <WeekView mode={calendarMode} />
+          </>
         ) : (
         <>
         {/* No quick-add on Erledigt and Suche — search is for finding, not creating (#19). */}
