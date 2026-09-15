@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | gate-go |
-| Nächste Rolle | /cicd-engineer |
-| Owner-Rolle | test-manager |
+| Status | done (Wirkung auf Prod nach User-Deploy) |
+| Nächste Rolle | — (User: `npm run release`) |
+| Owner-Rolle | cicd-engineer |
 | Datum | 2026-09-15 |
 
 > Orchestrator-Log:
@@ -14,6 +14,7 @@
 > - 2026-09-15 implementation-done (28/28 ACs gegen Dev verifiziert) → /test-designer
 > - 2026-09-15 testdesign-done (7 Wechselwirkungs-, 6 Sonderzeichen-Testfälle) → /test-manager
 > - 2026-09-15 GATE GO — 100/100 in Chromium+Firefox, 0 Defekte → /cicd-engineer
+> - 2026-09-15 done — PR #94 squash-merged (5165579), CI gruen, #92 geschlossen. Kein Deploy, kein Tag.
 
 ## 1. Requirements
 
@@ -432,3 +433,41 @@ Beim Wechsel Liste → Raster verschwindet das Suchfeld, `searchQuery` bleibt ab
 **Begründung:** 100/100 automatisierte Prüfungen in zwei Browsern, beide gate-kritischen Testfälle bestanden, Bestandsregression vollständig grün, keine neuen Lint-Findings, null Defekte. Die verbleibenden Restrisiken sind sämtlich Minor und berühren keinen Acceptance-Criterion.
 
 **Nächste Rolle:** `/cicd-engineer`
+
+## 6. CI/CD & Deployment
+
+- **PR:** [#94](https://github.com/SonGoku2078/Task-Manager/pull/94) — squash-merged nach `master`
+- **Merge-Commit:** `5165579`
+- **Branch:** `feature/92-topf-suche` (nach Merge gelöscht)
+- **Issue:** [#92](https://github.com/SonGoku2078/Task-Manager/issues/92) geschlossen
+- **Datum:** 2026-09-15
+
+### Branch-Review vor dem Merge
+
+| Prüfung | Ergebnis |
+|---|---|
+| Commit-Historie aussagekräftig | ✅ zwei Commits, fachlich getrennt (Feature / Tests) |
+| Debug-Ausgaben, `TODO`/`FIXME`/`debugger` im Produktivcode | ✅ keine |
+| Kommentare erklären das Warum, nicht das Offensichtliche | ✅ |
+| Umfang entspricht den Requirements | ✅ keine Ausweitung; Raster und Unteraufgaben sauber nach #93 abgegrenzt |
+
+### CI
+
+| Prüfung | Ergebnis |
+|---|---|
+| `build` (GitHub Actions) | ✅ pass (19 s) |
+| GitGuardian Security Checks | ✅ pass |
+| Merge-Status | ✅ `MERGEABLE` / `CLEAN` |
+| Regression auf `master` nach Merge | ✅ `npm test` Exit 0, `tsc --noEmit` Exit 0 |
+
+### Deployment
+
+**Nicht deployt — bewusst.** Der Stand liegt auf `master`, die Produktion (`192.168.8.50:3001`) läuft unverändert weiter. Der Deploy erfolgt ausschließlich durch den Nutzer via `npm run release` (SSH → `git pull` → `docker compose up -d --build` → Health-Poll).
+
+**Kein Release-Tag.** Die Desktop-App ist Thin Client und lädt die Weboberfläche beim nächsten Start vom Server — ein EXE-Build ist nicht nötig. Die Mobile-App ist von #92 nicht betroffen, ein `mobile-v*`-Tag entfällt.
+
+### Zusammenfassung
+
+Die topf-lokale Suche steht jetzt in allen Aufgaben-Ansichten zur Verfügung, an einheitlicher Position direkt unter der Erfassungszeile. `/` führt dorthin, wo man gerade ist. Damit ist die seit #9 offene Fidelity-Lücke gegenüber Nozbe geschlossen.
+
+Wiederholbare Nachweise liegen als `scripts/e2e-search92.mjs` und `scripts/e2e-search92-interactions.mjs` im Repo — beide browserparametrierbar (`chromium` | `firefox`).
