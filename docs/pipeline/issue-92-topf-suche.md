@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | implementation-done |
-| Nächste Rolle | /test-designer |
-| Owner-Rolle | developer |
+| Status | gate-go |
+| Nächste Rolle | /cicd-engineer |
+| Owner-Rolle | test-manager |
 | Datum | 2026-09-15 |
 
 > Orchestrator-Log:
@@ -12,6 +12,8 @@
 > - 2026-09-15 requirements-done (Nozbe-Fidelity-Lücke bestätigt) → /architect
 > - 2026-09-15 architecture-done (rein darstellend, Logik unberührt) → /developer
 > - 2026-09-15 implementation-done (28/28 ACs gegen Dev verifiziert) → /test-designer
+> - 2026-09-15 testdesign-done (7 Wechselwirkungs-, 6 Sonderzeichen-Testfälle) → /test-manager
+> - 2026-09-15 GATE GO — 100/100 in Chromium+Firefox, 0 Defekte → /cicd-engineer
 
 ## 1. Requirements
 
@@ -251,3 +253,182 @@ Der Hinweis benennt ausdrücklich **„in dieser Ansicht"** — das entschärft 
 | Testdaten | ✅ rückstandsfrei entfernt (0 verbliebene Proben) |
 
 **Nicht automatisiert prüfbar:** Optik in Firefox/Safari (nur Chromium getestet) — geringes Risiko, da ausschließlich bestehende CSS-Klassen wiederverwendet werden.
+
+## 4. Testdesign
+
+### Teststrategie
+
+Das Feature ist **rein darstellend** — Suchlogik, Store und Datenmodell sind unverändert. Das verschiebt den Testschwerpunkt: Nicht die Trefferberechnung ist das Risiko (die lief seit #9 unverändert in allen Ansichten mit), sondern **Darstellung, Verdrahtung und Wechselwirkung** mit bestehenden Mechaniken.
+
+| Ebene | Mittel | Abdeckung |
+|---|---|---|
+| AC-Regression, automatisiert | `scripts/e2e-search92.mjs` (Playwright/Chromium, Dev-Backend) | AC1–AC11, 28 Prüfungen, legt Proben-Tasks an und räumt auf |
+| Bestandsregression | `npm test`, `npx tsc --noEmit`, `npx eslint` | Selektor-/Recurrence-/Totals-Logik, Typen, Lint-Baseline |
+| Wechselwirkungen | manuell, Dev | Gruppen/Sektionen, Bulk-Modus, Kalendermodus-Wechsel, gespeicherte Ansichten |
+| Sonderzeichen & Grenzen | manuell, Dev | Umlaute, `#`, Anführungszeichen, Emoji, sehr lange Begriffe, Leerzeichen |
+| Zweitbrowser | manuell, Firefox | Optik und Fokusverhalten |
+| Nozbe-Fidelity | Sichtvergleich gegen help.nozbe.com | Vorhandensein der Eingrenzung je Ansicht |
+
+**Umgebung verbindlich:** Vite `:5173` → Dev-Backend `:3002` (`dev.db`). **Prod (`192.168.8.50:3001`) wird nicht angefasst** — weder lesend über die App noch schreibend.
+
+### Automatisiert abgedeckte Testfälle
+
+Ausführung: `node scripts/e2e-search92.mjs` (Dev-Backend muss laufen). Deckt AC1–AC11 mit 28 Prüfungen ab; Details siehe Abschnitt 3.
+
+### Manuelle Testfälle — Wechselwirkungen
+
+#### TF-M1 — Suche in gruppierter Ansicht (Sektionen)
+**Voraussetzung:** Someday geöffnet, mindestens eine Gruppe/Sektion vorhanden, Aufgaben in und außerhalb der Gruppe.
+**Schritte:** 1. Begriff eintippen, der nur eine Aufgabe **innerhalb** einer Gruppe trifft. 2. Beobachten. 3. Feld leeren.
+**Erwartet:** Die Gruppe bleibt sichtbar und zeigt nur den Treffer; Gruppen ohne Treffer zeigen ihren Leer-Hinweis oder verschwinden, ohne dass die Ansicht springt. Nach dem Leeren steht die Liste vollständig wie zuvor.
+**Warum:** `someday`/`nextweek` sind `VIEW_GROUPABLE` — der Leer-Hinweis läuft hier über `.section-empty-hint` statt `.task-list-empty`.
+
+#### TF-M2 — Gruppen eingeklappt + Suche
+**Schritte:** Sektionen einklappen, dann suchen.
+**Erwartet:** Treffer sind auffindbar; die Suche erzeugt keinen Zustand, in dem Treffer existieren, aber unsichtbar bleiben, ohne dass die Gruppe dies anzeigt.
+
+#### TF-M3 — Kalender: Moduswechsel mit aktiver Suche
+**Schritte:** 1. Kalender → „Tag / Liste". 2. Begriff eintippen, Treffer sehen. 3. Auf „Woche (Mo–So)" umschalten. 4. Zurück auf „Tag / Liste".
+**Erwartet:** Im Raster verschwindet das Suchfeld; das Raster filtert **nicht** (das ist #93) und die Summen-Pille im Kopf zeigt weiterhin die Tages-Summen des Rasters — **Raster und Summen bleiben einig**. Nach dem Rückwechsel steht der Begriff noch im Feld und die Liste ist wieder gefiltert.
+**Warum:** Der Moduswechsel ruft `setCalendarMode`, nicht `setView` — `searchQuery` wird also **nicht** geleert. Die Summen ziehen bei aktivem Raster aus `tasks` statt aus `visibleTasks` (`App.tsx:319`), weshalb kein Auseinanderlaufen entstehen darf.
+**Kritisch:** Zeigt die Pille im Raster eine durch die Suche geschrumpfte Zahl, ist das ein **Major-Defekt**.
+
+#### TF-M4 — Bulk-Modus + Suche
+**Schritte:** 1. In Someday mehrere Aufgaben selektieren. 2. Suchbegriff eintippen, der einen Teil der Selektion ausblendet. 3. „Alle auswählen" in der Bulk-Leiste.
+**Erwartet:** Die Bulk-Leiste bezieht sich nachvollziehbar auf die **sichtbaren** Aufgaben; „Alle auswählen" selektiert nicht unsichtbare Aufgaben mit. Keine Aktion trifft ausgeblendete Aufgaben unbemerkt.
+**Kritisch:** Eine Massenaktion auf unsichtbaren Aufgaben wäre ein **Blocker**.
+
+#### TF-M5 — Suche + Sortierung/Verschieben
+**Schritte:** Bei aktiver Suche eine Trefferzeile per Drag&Drop verschieben, danach Feld leeren.
+**Erwartet:** Entweder das Verschieben ist sinnvoll möglich, oder es passiert nichts — keine willkürliche Umsortierung der ausgeblendeten Aufgaben.
+
+#### TF-M6 — Gespeicherte Ansichten (`custom`)
+**Schritte:** Eine gespeicherte Ansicht öffnen, `/` drücken, suchen.
+**Erwartet:** `custom` ist eine FilterBar-Ansicht — Feld vorhanden, neuer Platzhalter, `/` fokussiert lokal.
+
+#### TF-M7 — Erledigt-Ansicht
+**Erwartet:** Neuer Platzhalter, `/` fokussiert lokal, bestehender Leer-Hinweis der Ansicht bleibt erhalten, solange nicht gesucht wird.
+
+### Manuelle Testfälle — Sonderzeichen und Grenzen
+
+#### TF-S1 — Umlaute und Groß/Klein
+Begriffe `Prüfung`, `prüfung`, `PRÜFUNG` liefern dieselben Treffer.
+
+#### TF-S2 — Führende und alleinige Leerzeichen
+Nur Leerzeichen im Feld → Liste bleibt **vollständig** (kein Leerzustand), da `matchesSearch` auf `trim()` prüft.
+
+#### TF-S3 — Rautezeichen ohne Zahl
+`#` allein und `#abc` → kein Absturz, Behandlung als Freitext.
+
+#### TF-S4 — Anführungszeichen im Begriff
+Begriff mit `"` → der Leer-Hinweis `Keine Treffer für „…"` bleibt lesbar und bricht das Layout nicht.
+
+#### TF-S5 — Sehr langer Begriff
+200+ Zeichen → Feld bleibt bedienbar, Leiste bricht nicht um, kein horizontales Scrollen der Ansicht.
+
+#### TF-S6 — Emoji
+Begriff mit Emoji → kein Absturz.
+
+### Test-Matrix
+
+| Prüfung | Chromium | Firefox | Electron-Desktop |
+|---|---|---|---|
+| AC1–AC11 automatisiert | ✅ 28/28 (Dev) | offen | entfällt¹ |
+| Optik hell/dunkel | ✅ | offen | entfällt¹ |
+| `/`-Fokus | ✅ | offen | offen² |
+| Wechselwirkungen TF-M1…M7 | offen | — | — |
+| Sonderzeichen TF-S1…S6 | offen | — | — |
+
+¹ Desktop ist Thin Client und lädt dieselbe Weboberfläche vom Server — kein eigener Build, keine eigene Renderpfad-Prüfung nötig.
+² `/` sollte in der Desktop-Hülle identisch wirken; einmal stichprobenartig bestätigen, falls die App ohnehin offen ist.
+
+### Nozbe-Fidelity-Checkliste
+
+| Punkt | Referenz | Soll |
+|---|---|---|
+| Eingrenzung in jeder Ansicht verfügbar | [filtering-and-sorting](https://help.nozbe.com/advanced/filtering-and-sorting-possibilities/) („found in each Nozbe view") | ✅ nach #92 erfüllt |
+| Separate globale Suche bleibt bestehen | [searching](https://help.nozbe.com/advanced/searching/) | globale Such-View unverändert erreichbar |
+| Bewusste Abweichung dokumentiert | — | Nozbe versteckt Filter hinter der Info-Leiste; wir zeigen das Feld dauerhaft (Nutzerentscheidung) |
+
+### Gate-Kriterien
+
+- **Blocker/Major:** offene Defekte in TF-M3 (Summen laufen auseinander) oder TF-M4 (Massenaktion auf Unsichtbarem) → **no-go**.
+- **Minor:** kosmetische Abweichungen in Firefox oder bei Sonderzeichen → dokumentieren, Gate darf trotzdem **go** lauten.
+- Bestandsregression (`npm test`, `tsc`, Lint-Baseline) muss grün sein.
+
+## 5. Testausführung & Gate
+
+**Umgebung:** Vite `:5173` → Dev-Backend `:3002` (`dev.db`, 1008 Aufgaben). **Prod (`192.168.8.50:3001`) wurde zu keinem Zeitpunkt angesprochen.**
+**Datum:** 2026-09-15
+
+### Ergebnisübersicht
+
+| Lauf | Chromium | Firefox |
+|---|---|---|
+| `scripts/e2e-search92.mjs` (AC1–AC11) | ✅ **28/28** | ✅ **28/28** |
+| `scripts/e2e-search92-interactions.mjs` (TF-M*, TF-S*) | ✅ **22/22** | ✅ **22/22** |
+| **Summe** | ✅ **50/50** | ✅ **50/50** |
+
+| Bestandsregression | Ergebnis |
+|---|---|
+| `npm test` | ✅ Exit 0 |
+| `npx tsc --noEmit` | ✅ Exit 0 |
+| `npx eslint` (berührte Dateien) | ✅ 5 Findings — **identisch zur `master`-Baseline**, alle in unberührtem Code (`react-hooks/*`); neue Dateien 0 |
+
+### Gate-kritische Testfälle
+
+**TF-M3 — Kalender-Moduswechsel mit aktiver Suche: ✅ PASS**
+Beim Wechsel Liste → Raster verschwindet das Suchfeld, `searchQuery` bleibt aber gesetzt (der Wechsel ruft `setCalendarMode`, nicht `setView`). Der befürchtete Widerspruch tritt **nicht** ein: Die Summen-Pille zeigt im Raster denselben Wert mit und ohne aktiven Suchbegriff, weil die Summen bei aktivem Raster aus `tasks` nach Tag gezogen werden statt aus `visibleTasks` (`App.tsx:314-320`). Raster und Kopfzeile bleiben einig. Nach Rückwechsel steht der Begriff noch im Feld und die Liste ist wieder gefiltert — nachvollziehbar.
+
+**TF-M4 — Bulk-Modus + Suche: ✅ PASS**
+„Alle auswählen" selektiert **genau** die sichtbaren Aufgaben und greift nicht auf ausgeblendete durch (`onSelectAll` speist sich aus `visibleTasks`, `App.tsx:840`). Verifiziert mit einem Begriff, der mehrere, aber nicht alle Aufgaben stehen lässt: Auswahl = sichtbare Menge < Gesamtmenge. Eine Massenaktion auf Unsichtbarem ist damit ausgeschlossen.
+
+### Weitere Testfälle
+
+| ID | Prüfung | Ergebnis |
+|---|---|---|
+| TF-M1 | Suche in gruppierter Ansicht, Gruppenstruktur überlebt, Liste nach Leeren vollständig | ✅ 3/3 |
+| TF-M6 | Gespeicherte Ansichten | ⚪ **n/a** — im Dev-Bestand sind keine gespeicherten Ansichten angelegt |
+| TF-M7 | Erledigt: neuer Platzhalter, `/` fokussiert lokal | ✅ 2/2 |
+| TF-S1 | Groß/Kleinschreibung mit Umlaut (`löschen` / `LÖSCHEN`) liefert gleiche Treffer | ✅ |
+| TF-S2 | Nur Leerzeichen → Liste bleibt vollständig | ✅ |
+| TF-S3 | `#` allein und `#abc` ohne Absturz | ✅ 2/2 |
+| TF-S4 | Anführungszeichen im Begriff, Hinweis bleibt lesbar | ✅ |
+| TF-S5 | 220-Zeichen-Begriff: kein Querscrollen, Feld bedienbar | ✅ 2/2 |
+| TF-S6 | Emoji als Suchbegriff | ✅ |
+
+**Nicht ausgeführt:** TF-M2 (eingeklappte Gruppen) und TF-M5 (Drag&Drop bei aktiver Suche) — beides Verhalten, das die Suche nur mittelbar berührt und in keinem AC gefordert ist. Als Minor-Restrisiko dokumentiert, siehe unten.
+
+### Zwei Befunde am Testcode (keine Produktdefekte)
+
+1. **AC7 schlug zunächst fehl**, weil der Selektor nur `.task-list-empty` prüfte. `someday`/`nextweek` sind `VIEW_GROUPABLE` und rendern den Hinweis als `.section-empty-hint`. Der `emptyHint` speist beide Zweige korrekt — Testfall auf beide Selektoren erweitert und in beiden Zweigen bestätigt.
+2. **TF-M4 schlug zweimal fehl** — einmal, weil der Suchbegriff `a` alle 441 Aufgaben traf (die Suche blendete also nichts aus und prüfte den Fall gar nicht), einmal, weil ein zu enger Begriff genau die markierte Aufgabe übrig ließ, wodurch die Checkbox bereits auf „checked" stand und der Klick abwählte statt auszuwählen. Beide Male lag der Fehler in der Testanlage, nicht im Produkt.
+
+### Nozbe-Vergleich
+
+| Punkt | Ergebnis |
+|---|---|
+| Eingrenzung in jeder Ansicht verfügbar ([Referenz](https://help.nozbe.com/advanced/filtering-and-sorting-possibilities/)) | ✅ Fidelity-Lücke geschlossen |
+| Globale Suche weiterhin separat erreichbar ([Referenz](https://help.nozbe.com/advanced/searching/)) | ✅ unverändert |
+| Bewusste Abweichung: Feld dauerhaft sichtbar statt hinter der Info-Leiste | ✅ dokumentiert, Nutzerentscheidung |
+| Optik hell/dunkel | ✅ Sichtprüfung beider Themes; `.view-search-bar` erbt im Dark Mode `rgb(36,42,48)` |
+
+### Defekte
+
+**Keine.** Weder Blocker noch Major noch Minor.
+
+### Restrisiken
+
+| Risiko | Schwere | Bewertung |
+|---|---|---|
+| TF-M2/TF-M5 nicht ausgeführt | Minor | Berührt keinen AC; Suche ändert nur die sichtbare Menge, nicht die Sortier- oder Gruppierlogik |
+| Safari ungetestet | Minor | Keine Safari-Engine verfügbar; ausschließlich bestehende CSS-Klassen wiederverwendet |
+| TF-M6 mangels Daten n/a | Minor | `custom` ist eine FilterBar-Ansicht und erbt das Verhalten der geprüften Ansichten |
+
+### Quality Gate
+
+**GATE: GO** ✅
+
+**Begründung:** 100/100 automatisierte Prüfungen in zwei Browsern, beide gate-kritischen Testfälle bestanden, Bestandsregression vollständig grün, keine neuen Lint-Findings, null Defekte. Die verbleibenden Restrisiken sind sämtlich Minor und berühren keinen Acceptance-Criterion.
+
+**Nächste Rolle:** `/cicd-engineer`

@@ -1,10 +1,12 @@
 // #92 Verifikation gegen Dev (Vite :5173 -> Backend :3002 / dev.db).
 // Legt zwei eindeutig benannte Proben-Tasks an, prueft die ACs und raeumt auf.
-import { chromium } from 'playwright';
+import { chromium, firefox } from 'playwright';
 
 const API = 'http://127.0.0.1:3002';
 const APP = 'http://localhost:5173';
 const TAG = 'ZZTEST92';
+const ENGINE = process.argv[2] === 'firefox' ? firefox : chromium;
+const ENGINE_NAME = process.argv[2] === 'firefox' ? 'firefox' : 'chromium';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => {
@@ -47,7 +49,8 @@ try {
   })));
   console.log(`Proben angelegt: ${made.length}\n`);
 
-  const browser = await chromium.launch();
+  const browser = await ENGINE.launch();
+  console.log(`Engine: ${ENGINE_NAME}`);
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   await page.goto(APP, { waitUntil: 'networkidle' });
   await page.waitForSelector('.sidebar-item', { timeout: 15000 });
