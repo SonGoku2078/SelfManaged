@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | gate-go |
-| Nächste Rolle | /cicd-engineer |
-| Owner-Rolle | test-manager |
+| Status | done (Wirkung auf Prod nach User-Deploy) |
+| Nächste Rolle | — (User: `npm run release`) |
+| Owner-Rolle | cicd-engineer |
 | Datum | 2026-09-15 |
 
 > Orchestrator-Log:
@@ -13,6 +13,7 @@
 > - 2026-09-15 requirements-done + architecture-done → /developer
 > - 2026-09-15 implementation-done; Selbst eingeschleppter Defekt (Summen-Pille) vor dem Gate behoben
 > - 2026-09-15 GATE GO — 144 Pruefungen ueber 3 Suiten x 2 Browser, 0 offene Defekte → /cicd-engineer
+> - 2026-09-15 done — PR #95 squash-merged (a8f93fb), CI gruen, #93 geschlossen. Kein Deploy, kein Tag.
 
 ## 1. Requirements
 
@@ -219,3 +220,29 @@ Strategie wie bei #92: automatisierte AC-Läufe gegen Dev in zwei Browsern, plus
 **GATE: GO** ✅
 
 144 automatisierte Prüfungen über drei Suiten und zwei Browser, Bestandsregression grün, keine neuen Lint-Findings, keine offenen Defekte. Die beiden kritischen Testfälle — Topf-Vererbung und Einigkeit von Raster und Summen — bestehen.
+
+## 6. CI/CD & Deployment
+
+- **PR:** [#95](https://github.com/SonGoku2078/Task-Manager/pull/95) — squash-merged nach `master`
+- **Merge-Commit:** `a8f93fb`
+- **Branch:** `feature/93-raster-subtasks` (nach Merge gelöscht)
+- **Issue:** [#93](https://github.com/SonGoku2078/Task-Manager/issues/93) geschlossen
+- **Datum:** 2026-09-15
+
+| Prüfung | Ergebnis |
+|---|---|
+| `build` (GitHub Actions) | ✅ pass (22 s) |
+| GitGuardian Security Checks | ✅ pass |
+| Merge-Status | ✅ `CLEAN` |
+| Debug-Reste / `TODO` im Produktivcode | ✅ keine |
+| Regression **nach** dem Merge auf `master` | ✅ `npm test` Exit 0, `tsc` Exit 0, alle drei E2E-Suiten 72/72 |
+
+### Deployment
+
+**Nicht deployt — bewusst.** Der Stand liegt auf `master`; Produktion (`192.168.8.50:3001`) läuft unverändert. Deploy ausschließlich durch den Nutzer via `npm run release`.
+
+**Kein Release-Tag.** Desktop ist Thin Client und erbt die Weboberfläche beim nächsten Laden vom Server; Mobile ist nicht betroffen.
+
+### Zusammenfassung
+
+Die Suche wirkt jetzt in **jeder** Aufgaben-Ansicht, einschließlich des Kalender-Rasters, und findet auch Unteraufgaben — dort, wo ihre Elternaufgabe steht, mit sichtbarem Hinweis auf sie. Zusammen mit #92 ist die Fidelity-Lücke gegenüber Nozbe („filtering options found in each Nozbe view") vollständig geschlossen.

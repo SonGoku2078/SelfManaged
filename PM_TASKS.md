@@ -101,7 +101,7 @@ Features gebrieft, beim Requirements Engineer in Arbeit.
 | # | Title | Priorität | Status |
 |---|-------|-----------|--------|
 | #92 | Suchfeld in Next Week, Someday und Kalender (+ `/` fokussiert lokal) | HIGH | offen — neu 2026-09-15 |
-| #93 | Suche im Kalender-Raster + Unteraufgaben als Treffer | HIGH | offen — neu 2026-09-15, baut auf #92 |
+| #93 | Suche im Kalender-Raster + Unteraufgaben als Treffer | HIGH | ✅ done — PR #95, `a8f93fb` (Prod nach User-Deploy) |
 | #59 | Bug: Doppelstart des Servers löscht kurzzeitig das DB-Lock | — | offen |
 | #45 | Bug: Evernote-Integration funktioniert nicht | — | offen |
 | #44 | Bug: Task kann nicht ans Ende verschoben werden | — | offen |
