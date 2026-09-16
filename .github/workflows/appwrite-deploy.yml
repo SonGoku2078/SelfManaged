@@ -1,0 +1,57 @@
+name: Appwrite Deploy
+
+# Deploys the Appwrite PROD build (both Functions + a new Site snapshot) and
+# activates it as the live PROD site — the only sanctioned way to ship an
+# Appwrite change. The API key lives ONLY as a secret on the
+# `appwrite-production` GitHub Environment below; it is never checked into
+# the repo and never available to a local dev/Claude Code session.
+#
+# Trigger: push a tag `appwrite-v*`, or run manually via the Actions tab.
+# Either way the job targets the `appwrite-production` environment — if that
+# environment has required reviewers configured (Settings -> Environments),
+# the run PAUSES for a manual approval click before anything actually
+# touches Appwrite, no matter who or what pushed the tag. Set that up once:
+#   Settings -> Environments -> New environment -> "appwrite-production"
+#   -> Required reviewers: add yourself
+#   -> Environment secrets: APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID,
+#      APPWRITE_API_KEY (same values as your local .appwrite.local)
+on:
+  push:
+    tags:
+      - 'appwrite-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: appwrite-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Write Appwrite credentials (ephemeral — deleted at the end of this job)
+        run: |
+          cat > .appwrite.local <<CFG
+          APPWRITE_ENDPOINT=${{ secrets.APPWRITE_ENDPOINT }}
+          APPWRITE_PROJECT_ID=${{ secrets.APPWRITE_PROJECT_ID }}
+          APPWRITE_API_KEY=${{ secrets.APPWRITE_API_KEY }}
+          CFG
+
+      - name: Build + deploy Functions and a new Site snapshot
+        run: npm run appwrite:deploy-preview
+
+      - name: Activate the new Site snapshot as PROD
+        run: npm run appwrite:activate
+
+      - name: Remove credentials file
+        if: always()
+        run: rm -f .appwrite.local
