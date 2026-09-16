@@ -3,7 +3,7 @@
 // isError mit Klartext (AC-18) — nie ein Prozessabsturz.
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { ApiError, TaskManagerApi } from './api.js';
+import { ApiError, type TaskApi } from './api.js';
 import {
   LogicError,
   buildNewTask,
@@ -76,7 +76,7 @@ const GTD_HINWEIS =
   'Begriffe: ★ = „Nächste Aktion" (vom Nutzer markiert). „Für Tag planen" (Heute-Marker) ist NICHT dasselbe wie „fällig am" (Termin/Deadline). ' +
   'Fehlt ein Projekt oder Datum, frag nach statt zu raten. Relative Angaben wie „morgen" selbst in YYYY-MM-DD umrechnen (heute siehe umgebung_info).';
 
-export function registerTools(server: McpServer, api: TaskManagerApi): void {
+export function registerTools(server: McpServer, api: TaskApi): void {
   const projectName = (projects: ApiProject[], id: string | null) => projects.find((p) => p.id === id)?.name ?? null;
   const lines = (tasks: ApiTask[], projects: ApiProject[], todayKey: string) =>
     tasks.map((t) => `- ${formatTaskLine(t, projectName(projects, t.projectId), todayKey, api.baseUrl)}`).join('\n');

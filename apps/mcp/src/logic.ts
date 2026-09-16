@@ -245,6 +245,8 @@ export function envKind(url: string): 'dev' | 'prod' | 'unbekannt' {
     if (u.port === '3002') return 'dev';
     // Prod = der LAN-Server auf :3001; die IP kommt per DHCP und kann wechseln.
     if (u.port === '3001' && !local) return 'prod';
+    // Appwrite-PROD (#98): baseUrl ist dort die Site-URL, kein LAN-Port.
+    if (u.hostname.endsWith('.appwrite.network')) return 'prod';
     return 'unbekannt';
   } catch {
     return 'unbekannt';

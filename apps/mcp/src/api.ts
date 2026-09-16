@@ -4,7 +4,20 @@ import type { ApiCategory, ApiProject, ApiTask } from './logic.js';
 
 export class ApiError extends Error {}
 
-export class TaskManagerApi {
+// Gemeinsame Form fuer beide Backends (klassischer Express-Server und
+// Appwrite-PROD via AppwriteTaskManagerApi in appwriteApi.ts) — tools.ts
+// kennt nur dieses Interface, nicht welches Backend dahintersteckt.
+export interface TaskApi {
+  readonly baseUrl: string;
+  health(): Promise<{ ok: boolean }>;
+  getTasks(): Promise<ApiTask[]>;
+  getProjects(): Promise<ApiProject[]>;
+  getCategories(): Promise<ApiCategory[]>;
+  createTask(task: Record<string, unknown>): Promise<ApiTask>;
+  patchTask(id: string, patch: Record<string, unknown>): Promise<ApiTask>;
+}
+
+export class TaskManagerApi implements TaskApi {
   constructor(readonly baseUrl: string, private readonly timeoutMs = 10_000) {}
 
   private async request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
