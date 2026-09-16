@@ -13,6 +13,7 @@
     "appwrite:provision-compute": "node scripts/appwrite/provision-compute.mjs",
     "appwrite:deploy-preview": "npm run build:appwrite && node scripts/appwrite/deploy-preview.mjs",
     "appwrite:activate": "node scripts/appwrite/activate-site.mjs",
+    "appwrite:release": "npm run appwrite:deploy-preview && npm run appwrite:activate",
     "appwrite:export": "node scripts/appwrite/export-current-prod.mjs",
     "appwrite:import": "node scripts/appwrite/import-export.mjs",
     "appwrite:verify": "node scripts/appwrite/verify.mjs",
