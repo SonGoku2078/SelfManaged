@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { getBaseUrl, setBaseUrl, normalizeBaseUrl, flushOutbox } from '../api';
+import { IS_APPWRITE_PROD } from '../../../../src/appwrite/client';
 import { checkForUpdate, openApk, APP_VERSION } from '../update';
 import { notificationStatus, sendTestNotification } from '../notifications';
 import { Ringtone } from '../ringtone';
@@ -159,43 +160,61 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           <button className="m-modal-x" onClick={onClose}>✕</button>
         </div>
 
-        <label className="m-field">
-          <span>Server-URL (Dev-Backend im WLAN)</span>
-          <input
-            value={url}
-            placeholder="http://192.168.1.193:3002"
-            inputMode="url"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            onChange={(e) => { setUrl(e.target.value); setStatus(''); setTestStatus(''); }}
-          />
-        </label>
-
-        <div className="m-settings-row">
-          <button className="m-btn-ghost" style={{ flex: 1 }} onClick={testConnection} disabled={testing || !url.trim()}>
-            {testing ? '… teste' : 'Verbindung testen'}
-          </button>
-          <button className="m-btn-ghost" style={{ flex: 1 }} onClick={testAndConnect} disabled={busy || !url.trim()}>
-            {busy ? '… verbinde' : 'Verbinden & Daten laden'}
-          </button>
-        </div>
-        {testStatus && (
-          <div className={testStatus.startsWith('✓') ? 'm-ok' : testStatus.startsWith('✕') ? 'm-fail' : ''}>
-            {testStatus}
+        {IS_APPWRITE_PROD ? (
+          // Appwrite-PROD: die Server-Adresse ist fest im Build verdrahtet
+          // (kein manuell einzugebender LAN-Server mehr) und wird ueber die
+          // Functions-Execution-API angesprochen, nicht per direktem fetch()
+          // — ein Verbindungstest per rohem fetch() auf /health bzw.
+          // /api/tasks schlaegt daher immer fehl (Appwrite verwirft dabei
+          // still die Auth-Header), obwohl die App laengst verbunden ist und
+          // Daten laedt. Diese ganze Sektion ist fuer Appwrite-Builds also
+          // nur verwirrend, nicht funktional — durch eine reine Statusanzeige
+          // ersetzt.
+          <div className="m-settings-info">
+            🟢 Appwrite-PROD verbunden<br />
+            Geladene Aufgaben: <strong>{taskCount}</strong>
           </div>
-        )}
-        {status && (
-          <div className={status.startsWith('✓') ? 'm-ok' : status.startsWith('✕') ? 'm-fail' : ''}>
-            {status}
-          </div>
-        )}
+        ) : (
+          <>
+            <label className="m-field">
+              <span>Server-URL (Dev-Backend im WLAN)</span>
+              <input
+                value={url}
+                placeholder="http://192.168.1.193:3002"
+                inputMode="url"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                onChange={(e) => { setUrl(e.target.value); setStatus(''); setTestStatus(''); }}
+              />
+            </label>
 
-        <div className="m-settings-info">
-          Aktive URL: <code>{getBaseUrl() || '(keine — Server-URL eingeben)'}</code><br />
-          Geladene Aufgaben: <strong>{taskCount}</strong>
-          {taskCount > 0 && ' — Daten sind da. Tabs sind gefiltert (Inbox = projektlos, Woche = bald fällig, Aktion = ★).'}
-        </div>
+            <div className="m-settings-row">
+              <button className="m-btn-ghost" style={{ flex: 1 }} onClick={testConnection} disabled={testing || !url.trim()}>
+                {testing ? '… teste' : 'Verbindung testen'}
+              </button>
+              <button className="m-btn-ghost" style={{ flex: 1 }} onClick={testAndConnect} disabled={busy || !url.trim()}>
+                {busy ? '… verbinde' : 'Verbinden & Daten laden'}
+              </button>
+            </div>
+            {testStatus && (
+              <div className={testStatus.startsWith('✓') ? 'm-ok' : testStatus.startsWith('✕') ? 'm-fail' : ''}>
+                {testStatus}
+              </div>
+            )}
+            {status && (
+              <div className={status.startsWith('✓') ? 'm-ok' : status.startsWith('✕') ? 'm-fail' : ''}>
+                {status}
+              </div>
+            )}
+
+            <div className="m-settings-info">
+              Aktive URL: <code>{getBaseUrl() || '(keine — Server-URL eingeben)'}</code><br />
+              Geladene Aufgaben: <strong>{taskCount}</strong>
+              {taskCount > 0 && ' — Daten sind da. Tabs sind gefiltert (Inbox = projektlos, Woche = bald fällig, Aktion = ★).'}
+            </div>
+          </>
+        )}
 
         {/* Update near the top so the install button is easy to reach (#30). */}
         <button className="m-btn-ghost" onClick={checkUpdate}>⬆ Nach Updates suchen</button>
