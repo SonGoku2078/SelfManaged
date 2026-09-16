@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { FormEvent } from 'react';
 import { useStore, DEFAULT_PALETTE } from '../store';
 import type { MemberRole } from '../types';
 import { importFromNozbeApi, mapNozbe, loginNozbe, type NozbeExport } from '../nozbe';
@@ -6,6 +7,7 @@ import { playAlarm, startFocusSound, stopFocusSound, unlockAudio } from '../pomo
 import { APP_VERSION, BUILD_TIME, apiEnvironment, fetchReleasedVersions, type ReleasedVersions } from '../version';
 import { getBaseUrl } from '../api/client';
 import { copyToClipboard } from '../clipboard';
+import { account, IS_APPWRITE_PROD } from '../appwrite/client';
 import './SettingsView.css';
 
 const POMO_ALARM_OPTIONS = [
@@ -184,6 +186,8 @@ export default function SettingsView() {
           Wird als Autor von Kommentaren und in der Aktivität verwendet.
         </p>
       </section>
+
+      <AccountSection />
 
       <MobileAccessSection />
 
@@ -570,6 +574,141 @@ function VersionSection({ env }: { env: ReturnType<typeof apiEnvironment> }) {
           <span className="version-note">installierte Version siehe Handy-Einstellungen</span>
         </div>
       </div>
+    </section>
+  );
+}
+
+// Appwrite-PROD only (#98): self-service E-Mail-/Passwort-Änderung für den
+// eingeloggten Benutzer. Ohne Appwrite gibt es keinen eigenen Login (die
+// klassische Express/SQLite-Instanz kennt keine Benutzerkonten), daher
+// rendert diese Sektion außerhalb von IS_APPWRITE_PROD nichts.
+function AccountSection() {
+  const [email, setEmail] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  const [emailPassword, setEmailPassword] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [emailStatus, setEmailStatus] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordRepeat, setNewPasswordRepeat] = useState('');
+  const [passwordStatus, setPasswordStatus] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
+
+  useEffect(() => {
+    if (!IS_APPWRITE_PROD) return;
+    let on = true;
+    account.get()
+      .then((a) => { if (on) { setEmail(a.email); setLoaded(true); } })
+      .catch(() => { if (on) setLoaded(true); });
+    return () => { on = false; };
+  }, []);
+
+  if (!IS_APPWRITE_PROD) return null;
+
+  const submitEmail = async (e: FormEvent) => {
+    e.preventDefault();
+    setEmailStatus('');
+    const trimmed = newEmail.trim();
+    if (!trimmed) { setEmailStatus('Neue E-Mail-Adresse eingeben.'); return; }
+    if (!emailPassword) { setEmailStatus('Aktuelles Passwort zur Bestätigung eingeben.'); return; }
+    setEmailBusy(true);
+    try {
+      await account.updateEmail({ email: trimmed, password: emailPassword });
+      setEmail(trimmed);
+      setNewEmail('');
+      setEmailPassword('');
+      setEmailStatus('✓ E-Mail-Adresse geändert.');
+    } catch (err) {
+      setEmailStatus(err instanceof Error ? err.message : 'Ändern fehlgeschlagen.');
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const submitPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setPasswordStatus('');
+    if (newPassword.length < 8) { setPasswordStatus('Neues Passwort braucht mindestens 8 Zeichen.'); return; }
+    if (newPassword !== newPasswordRepeat) { setPasswordStatus('Die beiden neuen Passwörter stimmen nicht überein.'); return; }
+    if (!oldPassword) { setPasswordStatus('Aktuelles Passwort eingeben.'); return; }
+    setPasswordBusy(true);
+    try {
+      await account.updatePassword({ password: newPassword, oldPassword });
+      setOldPassword('');
+      setNewPassword('');
+      setNewPasswordRepeat('');
+      setPasswordStatus('✓ Passwort geändert.');
+    } catch (err) {
+      setPasswordStatus(err instanceof Error ? err.message : 'Ändern fehlgeschlagen.');
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <h3 className="settings-heading">🔐 Konto</h3>
+      <p className="settings-hint">
+        Angemeldet als <strong>{loaded ? email : '…'}</strong>. Weitere Login-Konten (für andere
+        Personen oder Geräte) werden derzeit noch in der Appwrite-Konsole angelegt, nicht hier.
+      </p>
+
+      <form onSubmit={submitEmail} className="settings-account-form">
+        <label className="settings-label">Neue E-Mail-Adresse</label>
+        <input
+          className="settings-input"
+          type="email"
+          autoComplete="username"
+          value={newEmail}
+          onChange={(e) => setNewEmail(e.target.value)}
+        />
+        <label className="settings-label">Aktuelles Passwort (zur Bestätigung)</label>
+        <input
+          className="settings-input"
+          type="password"
+          autoComplete="current-password"
+          value={emailPassword}
+          onChange={(e) => setEmailPassword(e.target.value)}
+        />
+        <button className="btn btn-primary" type="submit" disabled={emailBusy}>
+          E-Mail-Adresse ändern
+        </button>
+        {emailStatus && <p className="settings-hint">{emailStatus}</p>}
+      </form>
+
+      <form onSubmit={submitPassword} className="settings-account-form">
+        <label className="settings-label">Aktuelles Passwort</label>
+        <input
+          className="settings-input"
+          type="password"
+          autoComplete="current-password"
+          value={oldPassword}
+          onChange={(e) => setOldPassword(e.target.value)}
+        />
+        <label className="settings-label">Neues Passwort</label>
+        <input
+          className="settings-input"
+          type="password"
+          autoComplete="new-password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+        />
+        <label className="settings-label">Neues Passwort wiederholen</label>
+        <input
+          className="settings-input"
+          type="password"
+          autoComplete="new-password"
+          value={newPasswordRepeat}
+          onChange={(e) => setNewPasswordRepeat(e.target.value)}
+        />
+        <button className="btn btn-primary" type="submit" disabled={passwordBusy}>
+          Passwort ändern
+        </button>
+        {passwordStatus && <p className="settings-hint">{passwordStatus}</p>}
+      </form>
     </section>
   );
 }

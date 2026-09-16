@@ -4,9 +4,15 @@
 // Precedence: localStorage 'tm-api-url' > build-time VITE_API_URL > default.
 // Fallback '' = same origin that served the app (#60): correct for the prod
 // build on any host; dev/vite sets VITE_API_URL, mobile stores tm-api-url.
-const DEFAULT_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+import { ExecutionMethod } from 'appwrite';
+import { APPWRITE_API_FUNCTION_ID, functions, IS_APPWRITE_PROD } from '../appwrite/client';
+
+const DEFAULT_BASE_URL = IS_APPWRITE_PROD
+  ? ((import.meta.env.VITE_APPWRITE_API_URL as string | undefined) ?? '')
+  : ((import.meta.env.VITE_API_URL as string | undefined) ?? '');
 
 export function getBaseUrl(): string {
+  if (IS_APPWRITE_PROD) return DEFAULT_BASE_URL.replace(/\/+$/, '');
   try {
     const override = localStorage.getItem('tm-api-url');
     if (override !== null && override.trim() !== '') return override.trim().replace(/\/+$/, '');
@@ -54,12 +60,46 @@ function reviveDates(obj: unknown): unknown {
   return obj;
 }
 
+// PROD backend calls MUST go through Appwrite's Functions Execution API, not
+// a plain fetch() to the function's own HTTP domain. Appwrite's edge strips
+// every x-appwrite-* header (including a client-supplied JWT) from requests
+// made directly to a function's domain — only the Execution API resolves the
+// calling SDK client's session/JWT into trusted identity headers the
+// function can read. Confirmed against the live project on 2026-09-16.
+//
+// Do NOT pass a `headers` object containing an x-appwrite-* key here —
+// createExecution() rejects the whole call with a 500 ("Invalid headers:
+// ... cannot start with x-appwrite") if you do. Appwrite already resolves
+// the caller's identity from the `functions` client's own session (cookie,
+// or its localStorage fallback) and injects x-appwrite-user-id/-jwt into the
+// function on its own; there is nothing for us to pass explicitly.
+async function appwriteApiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase() as ExecutionMethod;
+  const body = typeof init?.body === 'string' ? init.body : '';
+  const execution = await functions.createExecution({
+    functionId: APPWRITE_API_FUNCTION_ID,
+    body,
+    async: false,
+    xpath: path,
+    method,
+  });
+  if (execution.responseStatusCode >= 400) {
+    throw new Error(`API ${path}: ${execution.responseStatusCode} ${execution.responseBody || execution.errors || ''}`);
+  }
+  if (execution.responseStatusCode === 204 || !execution.responseBody) return undefined as T;
+  return reviveDates(JSON.parse(execution.responseBody)) as T;
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  if (IS_APPWRITE_PROD) return appwriteApiFetch<T>(path, init);
   // Always time out — a request that hangs (e.g. fired mid server-restart) must
   // not block the write queue forever. AbortError surfaces as a network error,
   // so the outbox keeps the op and retries it on the next tick.
   const res = await fetch(`${getBaseUrl()}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
     signal: init?.signal ?? AbortSignal.timeout(10000),
     ...init,
   });

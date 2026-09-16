@@ -1,0 +1,6 @@
+[mcp_servers.task-manager]
+command = "node"
+args = ["apps/mcp/dist/index.js"]
+
+[mcp_servers.task-manager.env]
+TM_API_URL = "http://localhost:3002"

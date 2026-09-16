@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Notification, dialog, ipcMain, shell } from '
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
+import * as https from 'https';
 import { autoUpdater } from 'electron-updater';
 
 // Thin client (#55/#60/#62): the desktop app is a window onto a running
@@ -85,9 +86,14 @@ function resolveTarget(): string {
 let currentTarget = ''; // set in main() — app.isPackaged needs the ready app
 
 // ── Health check + fallback page + polling ──────────────────────────────────
+// The `http` module can't speak TLS — pointed at an https:// target (e.g. the
+// Appwrite site, which is HTTPS-only) it silently fails/times out on every
+// check, so the app never gets past "Verbinden" for any https:// server.
+// Pick the module matching the target's own scheme instead of hardcoding http.
 function checkHealth(target: string): Promise<boolean> {
+  const client = target.startsWith('https:') ? https : http;
   return new Promise((resolve) => {
-    const req = http.get(`${target}/health`, { timeout: 1500 }, (res) => {
+    const req = client.get(`${target}/health`, { timeout: 1500 }, (res) => {
       res.resume();
       resolve(res.statusCode === 200);
     });
