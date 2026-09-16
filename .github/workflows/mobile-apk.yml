@@ -34,7 +34,9 @@ jobs:
         run: npm install
 
       - name: Build web app (bake version)
-        run: npm run build:mobile
+        # Appwrite-PROD (#98): .env.appwrite (repo root, no secrets) carries
+        # the public endpoint/project id, same file the web build uses.
+        run: npm run build:mobile:appwrite
         env:
           VITE_APP_VERSION: ${{ github.ref_name }}
 

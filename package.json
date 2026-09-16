@@ -27,6 +27,7 @@
     "prod:run": "npm run start:prod:run",
     "dev:mobile": "vite --config apps/mobile/vite.config.ts",
     "build:mobile": "vite build --config apps/mobile/vite.config.ts",
+    "build:mobile:appwrite": "vite build --config apps/mobile/vite.config.ts --mode appwrite",
     "db:seed-dev": "node scripts/seed-dev-db.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "lint": "eslint .",
