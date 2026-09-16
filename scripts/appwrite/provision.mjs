@@ -18,7 +18,10 @@ for (const key of ['APPWRITE_ENDPOINT', 'APPWRITE_PROJECT_ID', 'APPWRITE_API_KEY
 const client = new Client().setEndpoint(config.APPWRITE_ENDPOINT).setProject(config.APPWRITE_PROJECT_ID).setKey(config.APPWRITE_API_KEY);
 const tables = new TablesDB(client);
 const storage = new Storage(client);
-const userPermissions = [Permission.read(Role.users()), Permission.create(Role.users()), Permission.update(Role.users()), Permission.delete(Role.users())];
+// Team statt Role.users() (#98): sonst haette jeder, der sich irgendwie ein
+// Konto anlegt (Appwrite kennt fuer Email/Password keinen reinen
+// Login-ohne-Registrierung-Schalter), vollen Zugriff auf echte Daten.
+const userPermissions = [Permission.read(Role.team(APPWRITE_IDS.team)), Permission.create(Role.team(APPWRITE_IDS.team)), Permission.update(Role.team(APPWRITE_IDS.team)), Permission.delete(Role.team(APPWRITE_IDS.team))];
 
 const log = (message) => console.log(`${dryRun ? '[PLAN] ' : ''}${message}`);
 const isConflict = (error) => Number(error?.code) === 409;
