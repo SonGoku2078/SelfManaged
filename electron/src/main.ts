@@ -193,7 +193,19 @@ function setupAutoUpdater(): void {
 
   autoUpdater.on('update-available', (info) => {
     logToFile(`update-available ${info.version}`);
-    if (manualCheck) notify('Update wird geladen', `Version ${info.version} wird im Hintergrund geladen.`);
+    // Immer benachrichtigen, nicht nur bei manueller Pruefung: der normale
+    // Weg ist der stille Hintergrund-Check beim Start, und genau da lief der
+    // Download bisher komplett unsichtbar ab — man sah nur ploetzlich den
+    // "Update bereit"-Dialog und im Zweifel dachte man, die App haengt.
+    notify('Update gefunden', `Version ${info.version} wird im Hintergrund geladen…`);
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    // Windows-Taskleisten-Fortschrittsbalken auf dem App-Icon — sichtbares
+    // Lebenszeichen waehrend des Downloads, ohne dass ein Fenster/Dialog
+    // aufploppt oder der Fokus geklaut wird.
+    const win = mainWindow;
+    if (win && !win.isDestroyed()) win.setProgressBar(Math.max(0, Math.min(1, progress.percent / 100)));
   });
 
   autoUpdater.on('update-not-available', () => {
@@ -212,6 +224,9 @@ function setupAutoUpdater(): void {
   autoUpdater.on('update-downloaded', (info) => {
     updateReady = info.version;
     logToFile(`update-downloaded ${info.version}`);
+    const win = mainWindow;
+    if (win && !win.isDestroyed()) win.setProgressBar(-1); // Balken entfernen, Download fertig
+    notify('Update bereit', `Version ${info.version} ist bereit — Neustart installiert es.`);
     buildMenu(); // Menue zeigt jetzt "Update installieren und neu starten"
     void dialog
       .showMessageBox({
@@ -230,6 +245,8 @@ function setupAutoUpdater(): void {
 
   autoUpdater.on('error', (err) => {
     logToFile(`update-error ${String(err)}`);
+    const win = mainWindow;
+    if (win && !win.isDestroyed()) win.setProgressBar(-1);
     if (manualCheck) {
       manualCheck = false;
       void dialog.showMessageBox({
