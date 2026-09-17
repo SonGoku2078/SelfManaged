@@ -14,7 +14,13 @@ name: Appwrite Deploy
 #   Settings -> Environments -> New environment -> "appwrite-production"
 #   -> Required reviewers: add yourself
 #   -> Environment secrets: APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID,
-#      APPWRITE_API_KEY (same values as your local .appwrite.local)
+#      APPWRITE_API_KEY
+#
+# APPWRITE_API_KEY here is a narrow, deploy-only key — NOT the same key as
+# any broader admin key you may use locally for provisioning/import scripts.
+# It only needs functions.read/write, sites.read/write and rules.read/write
+# (see scripts/appwrite/README.md). Never reuse a databases.*/teams.*-scoped
+# key here.
 on:
   push:
     tags:

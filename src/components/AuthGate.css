@@ -24,6 +24,10 @@
 .auth-logo { width: 56px; height: 56px; margin: 0 auto; }
 .auth-error { color: #b3261e; font-size: 13px; }
 
+/* display:contents: reine Markup-Huelle fuers Scoping unten, wirkt sich
+   nicht auf Layout/Hoehen-Vererbung der App darunter aus. */
+.has-prod-logout { display: contents; }
+
 .prod-logout {
   position: fixed;
   z-index: 1000;
@@ -39,3 +43,13 @@
 }
 
 .prod-logout:hover { opacity: 1; }
+
+/* #Fat-Client-Login: der fixe Abmelden-Button (oben rechts, ~80px breit ab
+   right:12px) ueberlappt sonst die eigenen Kopf-Buttons (Erledigen/Loeschen/
+   Link/Stern/Schliessen) im Aufgaben-Detail-Panel, die ebenfalls oben rechts
+   sitzen. Nur in diesem Modus (Appwrite-PROD-Login aktiv) die Button-Reihe
+   nach links versetzen, damit Platz fuer Abmelden bleibt. Der Titel links
+   bleibt unangetastet (space-between trennt beides).  */
+.has-prod-logout .panel-header-actions {
+  margin-right: 90px;
+}

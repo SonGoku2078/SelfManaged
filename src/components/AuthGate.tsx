@@ -79,5 +79,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  return <><button className="prod-logout" type="button" onClick={logout}>Abmelden</button>{children}</>;
+  return (
+    <div className="has-prod-logout">
+      <button className="prod-logout" type="button" onClick={logout}>Abmelden</button>
+      {children}
+    </div>
+  );
 }

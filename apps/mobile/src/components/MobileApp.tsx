@@ -131,13 +131,13 @@ export default function MobileApp() {
           ⬆ Update {update.latest.replace(/^mobile-v/, 'v')} verfügbar — tippen zum Installieren
         </button>
       )}
-      {envKind === 'prod' ? (
-        <div className="m-env-prod">🔴 PRODUKTION — echte Daten</div>
-      ) : envKind === 'dev' ? (
+      {/* Produktion ist der Normalzustand und braucht keinen Hinweis — nur
+          abweichende Umgebungen sollen auffallen (#Fat-Client-Login-Ticket). */}
+      {envKind === 'dev' ? (
         <div className="m-env-dev">🟡 DEV / TEST — getrennte Datenbank</div>
-      ) : (
+      ) : envKind === 'other' ? (
         <div className="m-env-other">⚙ Kein Server gewählt — in ⚙ Einstellungen eintragen</div>
-      )}
+      ) : null}
       {pending > 0 ? (
         serverOnline ? (
           <button className="m-sync-banner" onClick={syncNow}>
