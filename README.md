@@ -1,4 +1,4 @@
-# Task Manager — Nozbe Clone
+# SelfManaged — Nozbe Clone
 
 A fully-functional, local-first task manager built with React, TypeScript, Vite and Zustand —
 a Nozbe-inspired GTD app. Data is stored by a local Express + SQLite backend
@@ -24,7 +24,7 @@ Check which version runs where: **Einstellungen → „Version & Umgebung"** (#5
 ## 🤖 KI-Zugriff per MCP (Sprach-Assistent, #88)
 
 Ein eigener **MCP-Server** (`apps/mcp/`) gibt Claude Desktop / Claude Code Werkzeuge auf den
-Task Manager: Projekte und Tasks lesen, Tagesplan abfragen, Tasks anlegen, für einen Tag planen,
+SelfManaged: Projekte und Tasks lesen, Tagesplan abfragen, Tasks anlegen, für einen Tag planen,
 Fälligkeit setzen, ★ setzen, abhaken. **Kein Löschen, keine Projektverwaltung.** Der Server ist ein
 dünner Adapter auf die bestehende REST-API und braucht keine Server-Änderung.
 
@@ -47,7 +47,7 @@ npm run mcp:dev                   # startet den Server gegen Dev (stdio; zum Deb
 ```json
 {
   "mcpServers": {
-    "task-manager": {
+    "selfmanaged": {
       "command": "node",
       "args": ["C:\\Pfad\\zum\\Repo\\apps\\mcp\\dist\\index.js"],
       "env": { "TM_API_URL": "http://192.168.8.187:3001" }

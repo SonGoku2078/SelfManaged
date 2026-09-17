@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MCP-Server für den Task Manager (#88): KI-Clients (Claude Desktop / Claude
+// MCP-Server für SelfManaged (#88): KI-Clients (Claude Desktop / Claude
 // Code) sprechen ihn per stdio an; er ruft die bestehende REST-API auf.
 //
 // Zwei Backends, je nach gesetzten Umgebungsvariablen (#98):

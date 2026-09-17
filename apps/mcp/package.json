@@ -1,9 +1,9 @@
 {
-  "name": "task-manager-mcp",
+  "name": "selfmanaged-mcp",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "MCP-Server: KI-Zugriff (Claude Desktop/Code) auf den Task Manager ueber die bestehende REST-API (#88)",
+  "description": "MCP-Server: KI-Zugriff (Claude Desktop/Code) auf SelfManaged ueber die bestehende REST-API (#88)",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

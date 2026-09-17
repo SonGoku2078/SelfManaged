@@ -6,7 +6,7 @@ import * as https from 'https';
 import { autoUpdater } from 'electron-updater';
 
 // Thin client (#55/#60/#62): the desktop app is a window onto a running
-// Task-Manager server. Target resolution, first hit wins:
+// SelfManaged server. Target resolution, first hit wins:
 //   1. TM_DESKTOP_URL  — full URL override (tests/power users)
 //   2. TM_DESKTOP_PORT — 127.0.0.1:<port> (E2E against the dev backend)
 //   3. userData/config.json { "serverUrl": … } — set in-app (#62), persisted

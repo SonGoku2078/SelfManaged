@@ -13,7 +13,7 @@ export const BUILD_TIME: string | null =
 // Aus den GitHub-Releases dieses (oeffentlichen) Repos — kein Token noetig.
 // Zeigt, ob irgendwo etwas hinterherhaengt; die auf dem HANDY installierte
 // Version kann der PC prinzipiell nicht wissen, nur die veroeffentlichte.
-const REPO = 'SonGoku2078/Task-Manager';
+const REPO = 'SonGoku2078/SelfManaged';
 
 export interface ReleasedVersions {
   desktop: string | null;

@@ -65,7 +65,7 @@ export function tasksToICS(tasks: Task[], calName = 'Nozbe Aufgaben'): string {
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Nozbe Clone//Task Manager//DE',
+    'PRODID:-//SelfManaged//Task Manager//DE',
     'CALSCALE:GREGORIAN',
     fold(`X-WR-CALNAME:${escapeText(calName)}`),
     ...events,

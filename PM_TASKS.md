@@ -1,7 +1,7 @@
-# PM_TASKS — Nozbe Task Manager Clone
+# PM_TASKS — SelfManaged (Nozbe Clone)
 
-**Projekt:** Nozbe Task Manager Clone (HTML MVP)  
-**Repository:** https://github.com/SonGoku2078/Task-Manager  
+**Projekt:** SelfManaged (Nozbe Clone, HTML MVP)  
+**Repository:** https://github.com/SonGoku2078/SelfManaged  
 **Status:** ✅ Tier-1 Core Features COMPLETE (14/14) — MVP funktionsfähig  
 **Last Updated:** 2026-09-15
 

@@ -54,7 +54,7 @@
 ### Acceptance Criteria
 **Aufbau & Betrieb**
 - [ ] AC-1 Der MCP-Server liegt unter `apps/mcp/`, ist TypeScript, spricht stdio (MCP-Standard für lokale Clients) und baut mit `npm run build` (Root) mit. CI (`.github/workflows/ci.yml`) bleibt grün.
-- [ ] AC-2 Die Base-URL des Task-Manager-Servers kommt ausschließlich aus der Umgebungsvariable `TM_API_URL`. Fehlt sie oder ist sie leer, beendet sich der Prozess mit Exit-Code 1 und einer deutschen Meldung, die den Variablennamen und ein Beispiel nennt. Es gibt keinen eingebauten Standardwert.
+- [ ] AC-2 Die Base-URL des SelfManaged-Servers kommt ausschließlich aus der Umgebungsvariable `TM_API_URL`. Fehlt sie oder ist sie leer, beendet sich der Prozess mit Exit-Code 1 und einer deutschen Meldung, die den Variablennamen und ein Beispiel nennt. Es gibt keinen eingebauten Standardwert.
 - [ ] AC-3 Das Werkzeug `umgebung_info` liefert die konfigurierte Base-URL, das Ergebnis von `GET /health` und die Kennzeichnung `dev`/`prod`/`unbekannt` (Port 3002 → dev, sonst per Heuristik: `192.168.8.50:3001` → prod).
 - [ ] AC-4 `.mcp.json` im Repo registriert den Server für Claude Code mit `TM_API_URL=http://localhost:3002` (Dev). Ein README-Abschnitt beschreibt die Claude-Desktop-Einrichtung mit der Prod-URL (nur Doku, kein Prod-Zugriff durch Tests).
 

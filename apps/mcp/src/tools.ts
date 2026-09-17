@@ -96,7 +96,7 @@ export function registerTools(server: McpServer, api: TaskApi): void {
     'umgebung_info',
     {
       title: 'Umgebung',
-      description: `Zeigt, mit welchem Task-Manager-Server dieser MCP-Server verbunden ist (dev/prod), ob er erreichbar ist, und das heutige Datum. Jede Task-Zeile in den Antworten endet mit einem Link (→ http://…/#/t/<nummer>), der den Task in der Web-App öffnet — gib ihn dem Nutzer mit, wenn er mehr sehen will. ${GTD_HINWEIS}`,
+      description: `Zeigt, mit welchem SelfManaged-Server dieser MCP-Server verbunden ist (dev/prod), ob er erreichbar ist, und das heutige Datum. Jede Task-Zeile in den Antworten endet mit einem Link (→ http://…/#/t/<nummer>), der den Task in der Web-App öffnet — gib ihn dem Nutzer mit, wenn er mehr sehen will. ${GTD_HINWEIS}`,
       inputSchema: {},
     },
     guard(async () => {

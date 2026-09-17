@@ -1,4 +1,4 @@
-// Dünner HTTP-Client auf die bestehende REST-API des Task Managers (#88).
+// Dünner HTTP-Client auf die bestehende REST-API von SelfManaged (#88).
 // Bewusst ohne DELETE — der Adapter darf nichts löschen (AC-17).
 import type { ApiCategory, ApiProject, ApiTask } from './logic.js';
 
@@ -31,7 +31,7 @@ export class TaskManagerApi implements TaskApi {
       });
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
-      throw new ApiError(`Task-Manager-Server unter ${this.baseUrl} nicht erreichbar (${why}). Läuft der Server?`);
+      throw new ApiError(`SelfManaged-Server unter ${this.baseUrl} nicht erreichbar (${why}). Läuft der Server?`);
     }
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);

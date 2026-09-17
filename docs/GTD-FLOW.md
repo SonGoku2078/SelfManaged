@@ -1,6 +1,6 @@
 # GTD-Flow (SelfManaged)
 
-Dieser Task-Manager bildet einen GTD-ähnlichen Workflow ab. Alles kommt über die
+SelfManaged bildet einen GTD-ähnlichen Workflow ab. Alles kommt über die
 **Inbox** rein und wird beim Triagieren in die passende Bahn gelenkt.
 
 ## Ablauf
