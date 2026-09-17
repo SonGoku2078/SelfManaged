@@ -59,8 +59,11 @@ export default defineConfig({
   server: {
     proxy: {
       // Dev/Test backend runs on 3002 (separate dev.db). See .env.development.
-      '/api': { target: 'http://localhost:3002', changeOrigin: true },
-      '/health': { target: 'http://localhost:3002', changeOrigin: true },
+      // Ueberschreibbar via VITE_DEV_API_PORT — noetig, um eine zweite lokale
+      // Instanz (z.B. Testserver-Checkout unter C:\dev) parallel ohne
+      // Port-Kollision laufen zu lassen (Muster wie im portfolio-app-Repo).
+      '/api': { target: `http://localhost:${process.env.VITE_DEV_API_PORT || 3002}`, changeOrigin: true },
+      '/health': { target: `http://localhost:${process.env.VITE_DEV_API_PORT || 3002}`, changeOrigin: true },
       '/nozbe-api': {
         target: 'https://api.nozbe.com:3000',
         changeOrigin: true,
