@@ -1,4 +1,4 @@
-# Task Manager Features Documentation
+# SelfManaged Features Documentation
 
 ## Implemented Features
 

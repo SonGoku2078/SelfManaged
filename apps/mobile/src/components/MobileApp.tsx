@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { useStore } from '../store';
 import { outboxOnChange, getBaseUrl, flushOutbox } from '../api';
+import { IS_APPWRITE_PROD } from '../../../../src/appwrite/client';
 import { useAutoSync } from '../useAutoSync';
 import { useNavHistory } from '../useNavHistory';
 import { useHorizontalSwipe, usePullToRefresh } from '../gestures';
@@ -115,10 +116,13 @@ export default function MobileApp() {
     return () => { sub?.remove?.(); };
   }, []);
 
-  // Environment indicator from the server port (prod vs dev vs none).
+  // Environment indicator: Appwrite-PROD builds have a fixed HTTPS Function
+  // URL with no port at all, so the old port-based guess (":3001"/":3002")
+  // always fell through to "other" ("Kein Server gewählt") for them, even
+  // though the app was correctly connected the whole time.
   const apiUrl = getBaseUrl();
   const port = apiUrl.match(/:(\d+)(?:\/|$)/)?.[1] ?? '';
-  const envKind = port === '3001' ? 'prod' : port === '3002' ? 'dev' : 'other';
+  const envKind = IS_APPWRITE_PROD ? 'prod' : port === '3001' ? 'prod' : port === '3002' ? 'dev' : 'other';
 
   return (
     <div className="m-app">
@@ -127,13 +131,13 @@ export default function MobileApp() {
           ⬆ Update {update.latest.replace(/^mobile-v/, 'v')} verfügbar — tippen zum Installieren
         </button>
       )}
-      {envKind === 'prod' ? (
-        <div className="m-env-prod">🔴 PRODUKTION — echte Daten</div>
-      ) : envKind === 'dev' ? (
+      {/* Produktion ist der Normalzustand und braucht keinen Hinweis — nur
+          abweichende Umgebungen sollen auffallen (#Fat-Client-Login-Ticket). */}
+      {envKind === 'dev' ? (
         <div className="m-env-dev">🟡 DEV / TEST — getrennte Datenbank</div>
-      ) : (
+      ) : envKind === 'other' ? (
         <div className="m-env-other">⚙ Kein Server gewählt — in ⚙ Einstellungen eintragen</div>
-      )}
+      ) : null}
       {pending > 0 ? (
         serverOnline ? (
           <button className="m-sync-banner" onClick={syncNow}>

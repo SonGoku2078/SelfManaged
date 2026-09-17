@@ -98,7 +98,7 @@ app.get('*', (_req, res) => {
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`Task Manager server running at http://localhost:${PORT}`);
+  console.log(`SelfManaged server running at http://localhost:${PORT}`);
   for (const ip of lanIPv4()) console.log(`  LAN (mobile): http://${ip}:${PORT}`);
 });
 

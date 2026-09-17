@@ -1,6 +1,6 @@
 # Ergaenzung fuer ~/server/docker-compose.yml auf dem Prod-Server (#61).
 # Diesen Dienst in den Abschnitt `services:` der bestehenden Compose-Datei
-# kopieren — der Task-Manager-Dienst selbst bleibt unveraendert.
+# kopieren — der SelfManaged-Dienst selbst bleibt unveraendert.
 #
 #   docker compose up -d ics-proxy
 #

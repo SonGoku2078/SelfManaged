@@ -27,14 +27,20 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # android-actions/setup-android@v3 started failing (tries to install the
+      # long-removed legacy "tools" package from Google's SDK repo — worked
+      # fine through mobile-v0.5.13 in July, broke since). ubuntu-latest
+      # already ships a working Android SDK under ANDROID_HOME with the
+      # cmdline-tools/platform-tools Gradle needs, so drop the extra step
+      # entirely instead of fighting the deprecated package list.
 
       - name: Install dependencies
         run: npm install
 
       - name: Build web app (bake version)
-        run: npm run build:mobile
+        # Appwrite-PROD (#98): .env.appwrite (repo root, no secrets) carries
+        # the public endpoint/project id, same file the web build uses.
+        run: npm run build:mobile:appwrite
         env:
           VITE_APP_VERSION: ${{ github.ref_name }}
 

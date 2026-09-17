@@ -1,6 +1,6 @@
 // In-app update check: compares the baked app version against the latest
 // `mobile-v*` GitHub Release and (when newer) points the user at the APK.
-const REPO = 'SonGoku2078/Task-Manager';
+const REPO = 'SonGoku2078/SelfManaged';
 const TAG_PREFIX = 'mobile-v';
 
 // Baked at build time as e.g. 'mobile-v0.2.0' → normalize to bare '0.2.0'.

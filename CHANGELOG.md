@@ -69,7 +69,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2026-06-17
 
-### Initial Release - Task Manager MVP
+### Initial Release - SelfManaged MVP
 
 #### Added
 - **Project Setup**

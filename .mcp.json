@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "task-manager": {
+    "selfmanaged": {
       "command": "node",
       "args": [
         "apps/mcp/dist/index.js"

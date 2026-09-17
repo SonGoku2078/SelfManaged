@@ -7,6 +7,10 @@ const repoRoot = path.resolve(__dirname, '../..');
 // Mobile MVP app. Reuses the root node_modules and shares code from ../../src.
 export default defineConfig({
   root: __dirname,
+  // .env.appwrite lives at the repo root (shared with the web build, single
+  // source of truth) — without this, Vite would look for it under
+  // apps/mobile/ instead and silently fall back to no Appwrite config.
+  envDir: repoRoot,
   plugins: [react()],
   resolve: {
     // Use the single React copy from the repo root (avoid duplicate-React errors).

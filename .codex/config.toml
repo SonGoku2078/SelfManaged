@@ -1,0 +1,6 @@
+[mcp_servers.selfmanaged]
+command = "node"
+args = ["apps/mcp/dist/index.js"]
+
+[mcp_servers.selfmanaged.env]
+TM_API_URL = "http://localhost:3002"
