@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | defects-open |
-| Nächste Rolle | developer |
-| Owner-Rolle | test-manager |
+| Status | blocked |
+| Nächste Rolle | User |
+| Owner-Rolle | cicd-engineer |
 | Datum | 2026-09-24 |
 | Issue | [#98](https://github.com/SonGoku2078/SelfManaged/issues/98) (referenziert #88, #89) |
 | Bezug | Folge-Thema zu #88 (MCP-Server, done); verwandt mit #89 ("Handy/Cloud + Auth", 2026-09-14 als "nicht geplant" geschlossen — anderer Grund, siehe unten) |
@@ -17,6 +17,8 @@
 > - 2026-09-24 Implementierung: `apps/gpt-actions` (Express, 12 Routen unter `/v1`), Bearer-Auth + Rate-Limit, `openapi.yaml`, Rauchtest 22/22 + Unit-Test gegen Dev, Root-Build/CI/README erweitert → `/test-designer`
 > - 2026-09-24 Testdesign: TF-01…TF-15 je AC + Ad-hoc-Fälle (DELETE-Ablehnung, manipulierter Auth-Header, Rate-Limit-Schwelle, Backend-Ausfall) → `/test-manager`
 > - 2026-09-24 Testausführung: Build/Auto/Smoke/Ad-hoc-Sicherheitsfälle grün; MAJOR-Defekt gefunden — `openapi.yaml` (deklariert 3.1.0, nutzt aber 3.0-Syntax `nullable: true`) fällt bei `redocly lint` mit 9 Errors durch, verletzt AC-4. GATE: NO-GO → `/developer`
+> - 2026-09-24 Fix: `openapi.yaml` auf 3.0.3 (Commit `5ed2605`). Re-Test: `redocly lint` fehlerfrei. GATE: GO → `/cicd-engineer`
+> - 2026-09-24 CI/CD: Branch gepusht, PR #99 erstellt (Closes #98). Bewusst NICHT gemergt — wartet auf User-Freigabe + Deployment-Schritte (Cloudflare Tunnel, `GPT_ACTIONS_API_KEY` auf `selfmanaged-prod`, Custom-GPT-Setup) → User
 
 ## 0. Ausgangslage (bindende User-Entscheidungen, 2026-09-24 — nicht neu verhandeln)
 
@@ -222,7 +224,7 @@ Statt MCP-`isError`-Textantwort: HTTP-Statuscode + `{"error": "<deutscher Klarte
 | Ad-hoc TF-12 (Naming-Grep „Task Manager") | ✅ keine unerwünschten Treffer; `selfmanaged-prod` durchgängig verwendet |
 | Ad-hoc TF-15 (manipulierter Auth-Header: leer/ohne Präfix/CRLF-Injection) | ✅ jeweils 401, kein 500 |
 | Review TF-05 (README Cloudflare-Tunnel-Setup) | ✅ vollständig, keine Secrets im Repo |
-| **Ad-hoc TF-04 (`npx @redocly/cli lint apps/gpt-actions/openapi.yaml`)** | ❌ **FAIL — 9 Errors** |
+| Ad-hoc TF-04 (`npx @redocly/cli lint apps/gpt-actions/openapi.yaml`) | ❌ FAIL — 9 Errors (Erstlauf) → ✅ PASS nach Fix (Commit `5ed2605`, `openapi: 3.0.3`) — „Woohoo! Your API description is valid.", nur 2 bekannte Warnings |
 | Lint (`npm run lint`) | ✅ 0 Befunde in neuen Dateien |
 
 ### Defekte
@@ -234,10 +236,28 @@ Statt MCP-`isError`-Textantwort: HTTP-Statuscode + `{"error": "<deutscher Klarte
   2. → 9 Errors (Regel `struct`), 2 Warnings
 - **Root Cause:** Datei deklariert `openapi: 3.1.0` (Kopfzeile), verwendet aber durchgängig die OpenAPI-3.0-Syntax `nullable: true` auf einzelnen Properties (u. a. `HealthInfo.fehler`, `Task.url/projectId/projectName/todayDate/dueDate`, `next-steps.hinweis`, `plan`/`due-date`-Request-Bodies `.datum`). In OpenAPI 3.1 (JSON Schema 2020-12) ist `nullable` kein gültiges Schema-Keyword mehr — Nullability muss über `type: ["string", "null"]` (bzw. `oneOf`) ausgedrückt werden. Die zwei Warnings (fehlendes `info.license`, Platzhalter-Server-URL `*.example.com`) sind unkritisch und kein Blocker.
 - **Fix erforderlich:** JA (Blocker für Gate) — entweder (a) `openapi: 3.1.0` → `openapi: 3.0.3` ändern (AC-4 verlangt „OpenAPI-3.x", 3.0.3 erfüllt das und `nullable: true` ist dort gültig — minimaler Fix), oder (b) alle `nullable: true`-Stellen auf `type: [..., "null"]` umstellen und bei 3.1.0 bleiben. Entscheidung beim Developer, Empfehlung: (a), da kleinster Diff und ChatGPT Actions beide Versionen akzeptiert.
+- **Behoben:** Commit `5ed2605` (Option a). Re-Test 2026-09-24: `npx --yes @redocly/cli lint apps/gpt-actions/openapi.yaml` → „Woohoo! Your API description is valid.", 0 Errors, 2 bekannte/akzeptierte Warnings. ✅ Verifiziert.
 
 ### Nozbe-Vergleich
 Nicht anwendbar (keine UI). GTD-Semantik unverändert übernommen aus #88 (`logic.ts` wiederverwendet, keine neue Logik).
 
 ### Quality Gate Decision
-**GATE: NO-GO.** Ein MAJOR-Defekt (ungültiges OpenAPI-Schema, AC-4) muss behoben werden, bevor an CI/CD übergeben wird. Alle anderen Prüfungen (Build, Auto, Smoke, alle Ad-hoc-Sicherheits-/Fehlerpfad-Fälle, Naming) sind grün.
-Owner-Role: `/developer`
+**GATE: GO.** Der MAJOR-Defekt (ungültiges OpenAPI-Schema, AC-4) ist behoben (Commit `5ed2605`) und re-verifiziert. Alle automatisierten, Smoke- und Ad-hoc-Prüfungen bestanden, 0 offene Defekte. Offen bleibt ausschließlich der Anwender-Nachweis (AC-5 echte Cloudflare-Tunnel-Aktivierung, AC-13/TF-13 echtes Custom-GPT-Setup in ChatGPT) — analog zum Gerätetest-Muster bei #88 (TF-20).
+Owner-Role: `/cicd-engineer`
+
+## 6. CI/CD & Deployment
+- **Branch:** `feature/gpt-actions-chatgpt` (gepusht zu `origin`, 2 Commits: `690947a` Implementierung, `5ed2605` Defekt-Fix)
+- **PR:** [#99](https://github.com/SonGoku2078/SelfManaged/pull/99) (`feature/gpt-actions-chatgpt` → `master`, „Closes #98")
+- **CI:** GitGuardian Security Checks ✅ pass; `build`-Workflow zum Zeitpunkt der Doku noch `pending` (läuft) — Status beim `gh pr checks 99` prüfen, bevor gemergt wird.
+- **Code-Review (self):** kein Debug-Output, keine TODOs, kein `.delete(...)`-Handler, deutsche Fehlertexte, `openapi.yaml` validiert, Lint sauber in allen neuen Dateien.
+- **Merge:** **NICHT durchgeführt.** Analog zu #88 (Merge dort vom Auto-Modus blockiert, User-Freigabe nötig) wartet dieser PR bewusst auf die Entscheidung des Users — zusätzlich hier auch inhaltlich sinnvoll, weil das Feature ohne die anschließenden User-Schritte (Cloudflare-Tunnel-Aktivierung, `GPT_ACTIONS_API_KEY` auf `selfmanaged-prod` setzen, Custom-GPT-Einrichtung) nicht nutzbar ist.
+- **Deployment:** kein automatisches Deployment. Nach Merge muss der User auf `selfmanaged-prod`:
+  1. `git pull` auf master, `cd apps/gpt-actions && npm install`, `npm run build:gpt-actions` (bzw. `npm run build` von Root)
+  2. `GPT_ACTIONS_API_KEY` erzeugen (`openssl rand -hex 32`) und als Umgebungsvariable auf `selfmanaged-prod` setzen, zusammen mit `TM_API_URL=http://192.168.8.187:3001` und `GPT_ACTIONS_PORT` (Standard 3003)
+  3. `apps/gpt-actions` als Dauerprozess starten (z. B. via `pm2`/`systemd`/Docker, je nach bestehendem Setup von `selfmanaged-prod`)
+  4. Cloudflare Tunnel gemäß README-Abschnitt einrichten und aktivieren (`cloudflared`)
+  5. `openapi.yaml` in eine neue Custom-GPT-Action in ChatGPT importieren, Bearer-Key hinterlegen, die vier Beispiel-Dialoge aus #88 testen
+- **Abschluss:** Status `blocked` — wartet auf User: PR-Review/Merge-Freigabe + die oben genannten Deployment-Schritte + Anwender-Nachweis (AC-5, AC-13). Kein technischer Blocker mehr auf Entwickler-/Pipeline-Seite.
+
+### Summary
+REST-Adapter für ChatGPT-Zugriff (#98) ist fertig implementiert, getestet (Gate: GO) und als PR [#99](https://github.com/SonGoku2078/SelfManaged/pull/99) bereit zum Review. Gleicher Funktionsumfang wie der bestehende MCP-Server (#88), aber HTTP + Bearer-Auth statt stdio, kein Löschen. Merge und Live-Schaltung (Tunnel, Key, Custom GPT) liegen beim User.
