@@ -29,5 +29,9 @@ jobs:
         run: npm install
         working-directory: apps/mcp
 
+      - name: Install gpt-actions dependencies
+        run: npm install
+        working-directory: apps/gpt-actions
+
       - name: Typecheck + build (frontend + server)
         run: npm run build

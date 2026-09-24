@@ -1,0 +1,514 @@
+openapi: 3.1.0
+info:
+  title: SelfManaged GPT Actions
+  description: >
+    Dünner REST-Adapter auf SelfManaged (#98) für ChatGPT Custom GPT Actions.
+    Erlaubte Operationen: lesen, anlegen, planen, Fälligkeit setzen, sternen,
+    abhaken. Kein Löschen, keine Projekt-/Kategorienverwaltung. ★ = "Nächste
+    Aktion" (vom Nutzer markiert) — nicht dasselbe wie ein Fälligkeitsdatum.
+    "Für einen Tag planen" (Tagesplan-Marker) ist ebenfalls nicht dasselbe wie
+    "fällig am" (Termin/Deadline). Fehlt ein Projekt oder Datum, beim Nutzer
+    nachfragen statt zu raten.
+  version: "1.0.0"
+servers:
+  - url: https://selfmanaged-prod.example.com
+    description: selfmanaged-prod (über Cloudflare Tunnel, URL anpassen)
+security:
+  - bearerAuth: []
+paths:
+  /v1/health:
+    get:
+      operationId: getHealth
+      summary: Umgebung & Erreichbarkeit
+      description: Zeigt, mit welchem SelfManaged-Server der Adapter verbunden ist (dev/prod/unbekannt), ob er erreichbar ist, und das heutige Datum (lokal, YYYY-MM-DD).
+      responses:
+        "200":
+          description: Umgebungsinfo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/projects:
+    get:
+      operationId: listProjects
+      summary: Projekte auflisten
+      description: Alle nicht archivierten Projekte und Areas mit Anzahl offener Tasks. Someday-Projekte sind inaktiv (active=false).
+      parameters:
+        - name: nurAktive
+          in: query
+          required: false
+          description: true = nur aktive Projekte (kein Someday)
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Projektliste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projekte:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/projects/{ref}/tasks:
+    get:
+      operationId: listProjectTasks
+      summary: Tasks eines Projekts
+      description: Alle offenen Tasks eines Projekts in App-Reihenfolge. Projekt per id oder Name (unscharf, Groß-/Kleinschreibung egal) adressiert.
+      parameters:
+        - $ref: "#/components/parameters/ProjectRef"
+        - name: inklusiveErledigte
+          in: query
+          required: false
+          description: true = erledigte Tasks mit auflisten
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Tasks des Projekts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projekt:
+                    $ref: "#/components/schemas/ProjectRefResult"
+                  tasks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/projects/{ref}/next-steps:
+    get:
+      operationId: listNextSteps
+      summary: Nächste Schritte eines Projekts
+      description: Liefert nur die mit ★ markierten offenen Tasks (Nächste Aktion) eines Projekts. Leer → hinweis erklärt, dass nichts markiert ist.
+      parameters:
+        - $ref: "#/components/parameters/ProjectRef"
+      responses:
+        "200":
+          description: Nächste Schritte
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projekt:
+                    $ref: "#/components/schemas/ProjectRefResult"
+                  naechsteSchritte:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+                  offenGesamt:
+                    type: integer
+                  hinweis:
+                    type: string
+                    nullable: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/day-plan:
+    get:
+      operationId: getDayPlan
+      summary: Tagesplan
+      description: Plan für einen Tag (Standard heute) in drei Gruppen — geplant (Tagesplan-Marker auf dem Datum), fällig (Termin an dem Tag), überfällig (Termin davor, nur bei heute/vergangen). Jeder Task genau einmal.
+      parameters:
+        - name: date
+          in: query
+          required: false
+          description: Datum im Format YYYY-MM-DD (Standard heute)
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+      responses:
+        "200":
+          description: Tagesplan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPlan"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/inbox:
+    get:
+      operationId: getInbox
+      summary: Inbox
+      description: Offene Tasks ohne Projekt (GTD-Inbox, noch nicht einsortiert).
+      responses:
+        "200":
+          description: Inbox-Tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/tasks/search:
+    get:
+      operationId: searchTasks
+      summary: Tasks suchen
+      description: Volltextsuche in Titel und Beschreibung (max. 50 Treffer, Standard nur offene Tasks).
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Suchbegriff
+          schema:
+            type: string
+            minLength: 1
+        - name: inklusiveErledigte
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Treffer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  treffer:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/tasks:
+    post:
+      operationId: createTask
+      summary: Task anlegen
+      description: Legt einen neuen Task an. Ohne Projekt landet er in der Inbox. faelligAm = Termin/Deadline, planenFuer = Tagesplan-Marker (setzt automatisch ★ und someday=false).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                projektId:
+                  type: string
+                projektName:
+                  type: string
+                beschreibung:
+                  type: string
+                faelligAm:
+                  type: string
+                  pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+                  description: Termin/Deadline (YYYY-MM-DD)
+                prioritaet:
+                  type: string
+                  enum: [low, medium, high]
+                kategorien:
+                  type: array
+                  items:
+                    type: string
+                  description: Kategorienamen (müssen existieren)
+                planenFuer:
+                  type: string
+                  pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+                  description: Tagesplan-Marker (YYYY-MM-DD) — setzt automatisch ★
+      responses:
+        "201":
+          description: Angelegter Task
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/tasks/{ref}/plan:
+    patch:
+      operationId: planTask
+      summary: Task für einen Tag planen / Planung entfernen
+      description: Setzt den Tagesplan-Marker (todayDate) eines Tasks auf ein Datum — der Task wird dadurch auch ★ und verlässt Someday. datum=null entfernt den Marker wieder (★ bleibt erhalten). Ändert NICHT das Fälligkeitsdatum.
+      parameters:
+        - $ref: "#/components/parameters/TaskRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [datum]
+              properties:
+                datum:
+                  type: string
+                  nullable: true
+                  pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/tasks/{ref}/due-date:
+    patch:
+      operationId: setTaskDueDate
+      summary: Fälligkeit setzen/entfernen
+      description: Setzt den Termin (Deadline) eines Tasks, oder entfernt ihn mit datum=null. Das ist NICHT der Tagesplan (dafür /plan).
+      parameters:
+        - $ref: "#/components/parameters/TaskRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [datum]
+              properties:
+                datum:
+                  type: string
+                  nullable: true
+                  pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/tasks/{ref}/star:
+    patch:
+      operationId: starTask
+      summary: Nächste Aktion (★) setzen/entfernen
+      parameters:
+        - $ref: "#/components/parameters/TaskRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stern]
+              properties:
+                stern:
+                  type: boolean
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/tasks/{ref}/complete:
+    patch:
+      operationId: completeTask
+      summary: Task abhaken
+      description: Markiert einen Task als erledigt (erledigt=false macht es rückgängig). Bei wiederkehrenden Tasks wird KEIN Folgetermin erzeugt (nur die App tut das) — Antwortfeld wiederkehrend zeigt das an.
+      parameters:
+        - $ref: "#/components/parameters/TaskRef"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                erledigt:
+                  type: boolean
+                  default: true
+      responses:
+        "200":
+          description: Aktualisierter Task
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+                  wiederkehrend:
+                    type: boolean
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API-Key aus GPT_ACTIONS_API_KEY, z. B. erzeugt mit "openssl rand -hex 32".
+  parameters:
+    ProjectRef:
+      name: ref
+      in: path
+      required: true
+      description: Projekt-id (exakt) oder Projektname (unscharf, Groß-/Kleinschreibung egal). Mehrdeutig oder unbekannt → 400/404 mit Klartextfehler.
+      schema:
+        type: string
+    TaskRef:
+      name: ref
+      in: path
+      required: true
+      description: Task-id (z. B. task-abc-123) oder Tasknummer (z. B. "142" oder "#142"). Unbekannt → 404.
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Fehlender oder ungültiger API-Key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: Validierungsfehler
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Projekt/Task nicht gefunden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TaskResult:
+      description: Aktualisierter Task
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              task:
+                $ref: "#/components/schemas/Task"
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    HealthInfo:
+      type: object
+      properties:
+        baseUrl:
+          type: string
+        umgebung:
+          type: string
+          enum: [dev, prod, unbekannt]
+        erreichbar:
+          type: boolean
+        fehler:
+          type: string
+          nullable: true
+        heute:
+          type: string
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [project, area]
+        active:
+          type: boolean
+        offen:
+          type: integer
+    ProjectRefResult:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+          nullable: true
+        title:
+          type: string
+        projectId:
+          type: string
+          nullable: true
+        projectName:
+          type: string
+          nullable: true
+        starred:
+          type: boolean
+        todayDate:
+          type: string
+          nullable: true
+        thisWeek:
+          type: boolean
+        dueDate:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [low, medium, high]
+        completed:
+          type: boolean
+        someday:
+          type: boolean
+        waiting:
+          type: boolean
+    DayPlan:
+      type: object
+      properties:
+        datum:
+          type: string
+        geplant:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        faellig:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        ueberfaellig:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"

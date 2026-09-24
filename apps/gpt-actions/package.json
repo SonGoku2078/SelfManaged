@@ -1,0 +1,23 @@
+{
+  "name": "selfmanaged-gpt-actions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "REST-Adapter fuer ChatGPT Custom GPT Actions auf SelfManaged (#98), analog apps/mcp aber HTTP + Bearer-Auth statt stdio.",
+  "main": "dist/gpt-actions/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/gpt-actions/src/index.js",
+    "smoke": "node smoke.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.0"
+  }
+}
