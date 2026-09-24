@@ -2,9 +2,9 @@
 
 | Feld | Wert |
 |---|---|
-| Status | implementation-done |
-| Nächste Rolle | test-designer |
-| Owner-Rolle | developer |
+| Status | defects-open |
+| Nächste Rolle | developer |
+| Owner-Rolle | test-manager |
 | Datum | 2026-09-24 |
 | Issue | [#98](https://github.com/SonGoku2078/SelfManaged/issues/98) (referenziert #88, #89) |
 | Bezug | Folge-Thema zu #88 (MCP-Server, done); verwandt mit #89 ("Handy/Cloud + Auth", 2026-09-14 als "nicht geplant" geschlossen — anderer Grund, siehe unten) |
@@ -15,6 +15,8 @@
 > - 2026-09-24 Req-Eng-Klärung per AskUserQuestion: Auth = API-Key (Bearer-Token), Erreichbarkeit = Cloudflare Tunnel. Issue #98 erstellt, ACs verfasst → `/architect`
 > - 2026-09-24 Architektur: neuer Prozess `apps/gpt-actions` (Express), wiederverwendet `apps/mcp/src/logic.ts`, Cloudflare Tunnel + Bearer-Auth, `openapi.yaml` fürs Custom-GPT-Action-Import → `/developer`
 > - 2026-09-24 Implementierung: `apps/gpt-actions` (Express, 12 Routen unter `/v1`), Bearer-Auth + Rate-Limit, `openapi.yaml`, Rauchtest 22/22 + Unit-Test gegen Dev, Root-Build/CI/README erweitert → `/test-designer`
+> - 2026-09-24 Testdesign: TF-01…TF-15 je AC + Ad-hoc-Fälle (DELETE-Ablehnung, manipulierter Auth-Header, Rate-Limit-Schwelle, Backend-Ausfall) → `/test-manager`
+> - 2026-09-24 Testausführung: Build/Auto/Smoke/Ad-hoc-Sicherheitsfälle grün; MAJOR-Defekt gefunden — `openapi.yaml` (deklariert 3.1.0, nutzt aber 3.0-Syntax `nullable: true`) fällt bei `redocly lint` mit 9 Errors durch, verletzt AC-4. GATE: NO-GO → `/developer`
 
 ## 0. Ausgangslage (bindende User-Entscheidungen, 2026-09-24 — nicht neu verhandeln)
 
@@ -165,4 +167,77 @@ Statt MCP-`isError`-Textantwort: HTTP-Statuscode + `{"error": "<deutscher Klarte
   - [x] `npm run gpt-actions:dev` (Platzhalter-Key) gegen Dev manuell verifiziert: `GET /v1/health` liefert `umgebung: "dev"`, `erreichbar: true`
   - [x] `npm run lint`: Befunde vorhanden, aber alle vorbestehend auf master (React-Hooks-Regeln in `src/`, `server/dist`, `apps/mobile`), **0 in `apps/gpt-actions/` oder `scripts/gpt-actions.test.ts`**
   - [x] Prod nicht angesprochen (Rauchtest verweigert `192.168.8.187`/`:3001`; alle manuellen Tests liefen gegen `http://localhost:3002`)
+  - [x] **Fix (Re-Test nach GATE NO-GO):** `apps/gpt-actions/openapi.yaml` Kopfzeile `openapi: 3.1.0` → `openapi: 3.0.3` (AC-4 verlangt nur „OpenAPI-3.x"; Datei nutzte durchgängig 3.0-Syntax `nullable: true`, die unter 3.1/JSON-Schema-2020-12 ungültig ist). `npx --yes @redocly/cli lint apps/gpt-actions/openapi.yaml` läuft jetzt fehlerfrei durch („Woohoo! Your API description is valid."), nur die 2 bekannten/akzeptierten Warnings (`info-license`, Platzhalter-Server-URL) bleiben. Keine 3.1-exklusiven Konstrukte (`examples`, `webhooks`, `$defs`, …) waren im Schema vorhanden, daher keine weiteren Anpassungen nötig.
   - [ ] AC-5 (Cloudflare Tunnel live) und AC-13 (Custom GPT in ChatGPT, Anwender-Nachweis) sind bewusst **nicht** Teil dieser Verifikation — kein echter Tunnel wurde angelegt (nur Doku im README), kein echtes ChatGPT-Setup durchgeführt. Das ist der ausstehende Anwender-Nachweis, analog TF-20 bei #88.
+
+## 4. Testdesign
+
+### Teststrategie
+- **Auto (TC-A12, `scripts/gpt-actions.test.ts`):** HTTP-Layer ohne echten Server/Netz — Auth-Middleware (Annahme/Ablehnung), Rate-Limit-Schwelle, Routing-Verdrahtung zu `logic.ts` über Fake-Backend.
+- **Integration/Smoke (TC-M68, `apps/gpt-actions/smoke.mjs`):** echter HTTP-Client gegen den gebauten Server auf **Dev** (`dev.db`), ruft alle 12 Routen mit/ohne/falschem Key auf, prüft Statuscodes + Datenwirkung. Verweigert Prod-URLs.
+- **Ergänzende Ad-hoc-Fälle (Test-Manager, gegen Dev):** Fehlerpfade und Grenzfälle, die weder Unit- noch Smoke-Test abdecken (siehe TF-11…TF-15 unten).
+- **Build/CI:** `npm run build` inkl. `apps/gpt-actions`; CI-Workflow mit neuem Install-Schritt; Lint 0 Befunde in neuen Dateien.
+- **Anwender (User):** Cloudflare-Tunnel-Aktivierung + Custom-GPT-Einrichtung in ChatGPT mit `openapi.yaml`, danach die vier Beispiel-Dialoge aus #88 wiederholen — gegen Dev zuerst, nach Freigabe gegen Prod. Analog TF-20/TF-19-Nachweis bei #88.
+- **Nozbe-Vergleich:** nicht anwendbar (keine UI, reine API wie schon bei #88).
+
+### Testfälle (je AC)
+| TF | AC | Prüfung | Art |
+|---|---|---|---|
+| TF-01 | AC-1 | Kein Endpunkt reicht `/api/*` direkt durch; alle 12 Routen laufen über `logic.ts`/`api.ts`-Adapter; `grep -i "delete"` in `apps/gpt-actions/src` liefert nur Kommentare/Namen ohne `.delete(` | Smoke + Review |
+| TF-02 | AC-2 | Request ohne Header → 401; mit falschem Key → 401; mit korrektem Key → 200; Vergleich ist konstant-zeitig (Code-Review, kein `===` auf Rohstring) | Auto + Smoke + Review |
+| TF-03 | AC-3 | Start ohne `TM_API_URL` bzw. ohne `GPT_ACTIONS_API_KEY` → Exit 1, deutsche Meldung nennt die fehlende Variable | Manuell |
+| TF-04 | AC-4 | `openapi.yaml` ist gültiges OpenAPI 3.1 (Schema-Lint/Import-Test in einen OpenAPI-Validator), enthält `securitySchemes.bearerAuth` und alle 12 Pfade | Ad-hoc |
+| TF-05 | AC-5 | README-Abschnitt „Cloudflare Tunnel" enthält vollständige, nachvollziehbare Setup-Schritte ohne eingebettete Secrets; kein `cloudflared`-Config-File im Repo committed | Review |
+| TF-06 | AC-6 | Alle Lese-Routen (`/v1/projects`, `/tasks`, `/next-steps`, `/day-plan`, `/inbox`, `/tasks/search`) liefern inhaltlich dieselben Daten wie die entsprechenden MCP-Tools bei gleichem Dev-Datenstand | Smoke |
+| TF-07 | AC-7 | Schreib-Routen setzen dieselben Felder/Invarianten wie die MCP-Tools (Planen ⇒ ★ + kein Someday, Fälligkeit lokale Mitternacht, Stern, Abhaken inkl. `completedAt`) | Smoke + Auto |
+| TF-08 | AC-8 | Adressierung per `taskId`, per Tasknummer und per `#Nummer` liefert denselben Task; unbekannte Referenz → 404 | Smoke |
+| TF-09 | AC-9 | Kein `.delete(...)`-Handler im Router (Code-Review); kein Endpunkt für Projekt-/Kategorien-Schreiben; expliziter Request mit `DELETE`-Methode auf jede Route → 404/405 (Express-Standardverhalten, kein Handler registriert) | Ad-hoc + Review |
+| TF-10 | AC-10 | Ungültiges Datum (`"morgen"` statt `YYYY-MM-DD`) → 400 mit Klartext; Backend nicht erreichbar (Dev-Server gestoppt) → 502 statt Absturz, Prozess lebt weiter; kein Stacktrace im Response-Body | Ad-hoc |
+| TF-11 | AC-11 | Rate-Limit-Schwelle in Unit-Test simuliert (kleines Limit); Ad-hoc gegen echten Server: 25 Fehlversuche in Folge → ab dem konfigurierten Schwellwert `429` statt `401`; erfolgreiche Requests zählen nicht mit (`skipSuccessfulRequests`) | Auto + Ad-hoc |
+| TF-12 | AC-12 | `grep -ri "task manager" README.md apps/gpt-actions` liefert keine neuen Treffer außerhalb historischer Zitate (z. B. Issue-Referenzen); Prod-Beispiele nennen `selfmanaged-prod` | Review |
+| TF-13 | AC-13 | Vier Beispiel-Dialoge (analog #88) über einen echten Custom GPT in ChatGPT, zunächst gegen Dev-Tunnel, dann gegen Prod nach Freigabe | User |
+| TF-14 | AC-14 | `npm test` enthält `gpt-actions.test.ts`; deckt Auth-Ablehnung und Abwesenheit von Lösch-Routen ab (Assertion auf Router-Stack oder expliziter DELETE-Request → kein 2xx) | Auto |
+| TF-15 | — | Manipulierter/abgeschnittener Bearer-Header (z. B. `Authorization: Bearer` ohne Wert, `Authorization: <key>` ohne „Bearer"-Präfix, Header mit Zeilenumbruch) → jeweils sauber 401, kein 500 | Ad-hoc |
+
+### Test-Matrix
+| Umgebung | Auto (TC-A12) | Smoke (TC-M68) | Ad-hoc | User-Dialoge |
+|---|---|---|---|---|
+| Dev (`localhost:3002`, `dev.db`) | ✅ | ✅ | ✅ | User (nach Tunnel-Aktivierung) |
+| Prod (`selfmanaged-prod`, `192.168.8.187:3001`) | — | verboten | verboten | User (nach Freigabe, letzter Schritt) |
+
+**Status:** testdesign-done · **Nächste Rolle:** `/test-manager`
+
+## 5. Testausführung & Gate
+
+### Test Results (2026-09-24, Dev `localhost:3002` / `dev.db`, Prod nicht berührt)
+| Block | Ergebnis |
+|---|---|
+| Build `npm run build` (Web + Server + MCP + gpt-actions) | ✅ PASS |
+| Auto TC-A12 `scripts/gpt-actions.test.ts` (via `npm test`) | ✅ PASS (Auth-Middleware, Rate-Limit-Schwelle, Routing-Verdrahtung) |
+| Auto Regression (übrige `npm test`-Suiten) | ✅ PASS (unverändert) |
+| Smoke TC-M68 `apps/gpt-actions/smoke.mjs` gegen Dev | ✅ 22/22 |
+| Ad-hoc TF-09 (DELETE auf jede Route) | ✅ 404, kein Handler registriert |
+| Ad-hoc TF-10 (ungültiges Datum → 400; Backend unerreichbar → 502) | ✅ beide Fälle sauberes JSON, kein Absturz |
+| Ad-hoc TF-11 (Rate-Limit-Schwelle, 20 fehlgeschlagene Requests/15min) | ✅ 429 exakt ab dem 20. nicht-2xx-Request derselben IP, `skipSuccessfulRequests` bestätigt |
+| Ad-hoc TF-12 (Naming-Grep „Task Manager") | ✅ keine unerwünschten Treffer; `selfmanaged-prod` durchgängig verwendet |
+| Ad-hoc TF-15 (manipulierter Auth-Header: leer/ohne Präfix/CRLF-Injection) | ✅ jeweils 401, kein 500 |
+| Review TF-05 (README Cloudflare-Tunnel-Setup) | ✅ vollständig, keine Secrets im Repo |
+| **Ad-hoc TF-04 (`npx @redocly/cli lint apps/gpt-actions/openapi.yaml`)** | ❌ **FAIL — 9 Errors** |
+| Lint (`npm run lint`) | ✅ 0 Befunde in neuen Dateien |
+
+### Defekte
+
+**[MAJOR] `openapi.yaml` ist kein gültiges OpenAPI 3.1 — verletzt AC-4**
+- **Severity:** MAJOR (blockiert AC-4: Schema muss gültig und direkt importierbar sein; ein ungültiges Schema kann den ChatGPT-Custom-GPT-Action-Import zum Scheitern bringen)
+- **Reproduktion:**
+  1. `npx @redocly/cli lint apps/gpt-actions/openapi.yaml`
+  2. → 9 Errors (Regel `struct`), 2 Warnings
+- **Root Cause:** Datei deklariert `openapi: 3.1.0` (Kopfzeile), verwendet aber durchgängig die OpenAPI-3.0-Syntax `nullable: true` auf einzelnen Properties (u. a. `HealthInfo.fehler`, `Task.url/projectId/projectName/todayDate/dueDate`, `next-steps.hinweis`, `plan`/`due-date`-Request-Bodies `.datum`). In OpenAPI 3.1 (JSON Schema 2020-12) ist `nullable` kein gültiges Schema-Keyword mehr — Nullability muss über `type: ["string", "null"]` (bzw. `oneOf`) ausgedrückt werden. Die zwei Warnings (fehlendes `info.license`, Platzhalter-Server-URL `*.example.com`) sind unkritisch und kein Blocker.
+- **Fix erforderlich:** JA (Blocker für Gate) — entweder (a) `openapi: 3.1.0` → `openapi: 3.0.3` ändern (AC-4 verlangt „OpenAPI-3.x", 3.0.3 erfüllt das und `nullable: true` ist dort gültig — minimaler Fix), oder (b) alle `nullable: true`-Stellen auf `type: [..., "null"]` umstellen und bei 3.1.0 bleiben. Entscheidung beim Developer, Empfehlung: (a), da kleinster Diff und ChatGPT Actions beide Versionen akzeptiert.
+
+### Nozbe-Vergleich
+Nicht anwendbar (keine UI). GTD-Semantik unverändert übernommen aus #88 (`logic.ts` wiederverwendet, keine neue Logik).
+
+### Quality Gate Decision
+**GATE: NO-GO.** Ein MAJOR-Defekt (ungültiges OpenAPI-Schema, AC-4) muss behoben werden, bevor an CI/CD übergeben wird. Alle anderen Prüfungen (Build, Auto, Smoke, alle Ad-hoc-Sicherheits-/Fehlerpfad-Fälle, Naming) sind grün.
+Owner-Role: `/developer`
