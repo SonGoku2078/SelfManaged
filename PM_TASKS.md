@@ -3,7 +3,7 @@
 **Projekt:** SelfManaged (Nozbe Clone, HTML MVP)  
 **Repository:** https://github.com/SonGoku2078/SelfManaged  
 **Status:** ✅ Tier-1 Core Features COMPLETE (14/14) — MVP funktionsfähig  
-**Last Updated:** 2026-09-15
+**Last Updated:** 2026-09-18
 
 ---
 
@@ -17,6 +17,8 @@ Alle neuen Feature-Ideen, Requests, Bugs — unpriorisiert.
 - [x] **Email Integration** — Forward emails as tasks (lokaler Stub)
 - [x] **Advanced Reporting** — Task statistics, completion rate (Berichte-Ansicht)
 - [ ] **Mobile Gestures** — Swipe to delete, long-press menus (Touch Devices) — *zurückgestellt: braucht Touch-Hardware zum Verifizieren*
+- [x] **Sprachsteuerung zur Task-Erfassung (Mikrofon-Button)** — Diktier-Button in der App (Web + perspektivisch Handy), Speech-to-Text + KI-Interpretation legt Task an; landet je nach gesprochenem Inhalt in Inbox oder direkt in einem Projekt. Ziel: Idee → Button → Diktat → Task ist erledigt, ohne Tippen oder manuelle Ablage-Entscheidung. → triagiert, siehe Backlog TIER-4.
+- [x] **ChatGPT-Zugriff auf SelfManaged (Custom GPT Actions)** — User will Tasks nicht nur über Claude (MCP, #88), sondern auch über ChatGPT lesen/anlegen/planen/abhaken/sternen können. Verwandt mit dem 2026-09-14 als "nicht geplant" geschlossenen #89 (damals: Handy-Zugriff war nie Ziel) — heute expliziter neuer Wunsch mit anderem Ziel (ChatGPT statt Handy). User-Entscheidungen 2026-09-24 bindend: Custom GPT Actions (REST/OpenAPI, kein Remote-MCP), Server muss internet-erreichbar sein (Tunnel/Reverse-Proxy + TLS), neues Issue statt #89-Reaktivierung. → triagiert, siehe Eintrag „In Bearbeitung".
 
 ---
 
@@ -68,6 +70,7 @@ Triagiert, gruppiert nach Tier.
 - [x] **[TIER-4] Dark Mode** — Night theme
 - [ ] **[TIER-4] Mobile App** — Electron/React Native version — *zurückgestellt: separater Build-Target/Epic, kein HTML-MVP-Scope*
 - [x] **[TIER-4] HIGH — App-Logo & Icons** — Eigenes Branding (Haken auf Grün) für Browser-Tab, Android-Launcher/Themed/Splash, Electron. Design final vom User bestätigt → direkt in Req-Eng.
+- [ ] **[TIER-4] HIGH — Sprachsteuerung zur Task-Erfassung (Mikrofon-Button)** — Mikrofon-Button in der UI (Web zuerst, Handy später) startet Diktat; Speech-to-Text-Transkript geht an die KI, die daraus Titel/Details extrahiert und den Task per bestehender Task-Anlage-Logik erstellt. KI erkennt aus dem Gesagten, ob ein Projektbezug genannt wurde (→ Task landet direkt im Projekt) oder nicht (→ Inbox, wie bisheriger Default). Kernanforderung User: max. Schnelligkeit/Reibungslosigkeit, keine manuelle Nacharbeit nötig. Ergänzt den bestehenden MCP-Sprach-Assistenten (#88, Claude Desktop/Code) um einen In-App-Weg ohne externes Tool; thematisch verwandt mit #90 (Sprachausgabe/Jarvis, aber das ist Output statt Input).
 
 ---
 
@@ -79,7 +82,24 @@ Features gebrieft, beim Requirements Engineer in Arbeit.
 |----|---------|---------| -----|-------|
 | — | Alle Tier-1-Features abgeschlossen | done | docs/pipeline/* | — |
 | #88 | **MCP-Server: Sprach-Assistent (Claude Desktop/Code)** — lesen/planen/anlegen/abhaken, kein Löschen (#89 Handy: nicht geplant, geschlossen) | done (PR #91 gemergt 2026-09-14) | [#88](https://github.com/SonGoku2078/Task-Manager/issues/88) · docs/pipeline/mcp-server.md | User: Claude Desktop einrichten |
+| #98 | **ChatGPT-Zugriff auf SelfManaged (Custom GPT Actions)** — REST-API mit Auth, internet-erreichbar (Tunnel/TLS), gleicher Rechte-Scope wie #88 | blocked (Gate GO, PR offen — wartet auf User: Merge-Freigabe + Cloudflare-Tunnel/Key/ChatGPT-Setup) | [#98](https://github.com/SonGoku2078/SelfManaged/issues/98) · [PR #99](https://github.com/SonGoku2078/SelfManaged/pull/99) · docs/pipeline/chatgpt-api-access.md | User: PR reviewen, mergen, Tunnel+Key+Custom-GPT einrichten |
 | 015 | App-Logo & Icons (SelfManaged) | COMPLETED (PR #50, 2026-07-16) | [#49](https://github.com/SonGoku2078/Task-Manager/issues/49) | — |
+
+### Briefing → /req-engineer: ChatGPT-Zugriff auf SelfManaged (Custom GPT Actions)
+- **Kontext / Warum:** Der User nutzt bereits Claude (MCP-Server, #88) für KI-gestützten Task-Zugriff und will denselben Funktionsumfang jetzt auch über ChatGPT nutzen können. Issue #89 ("Handy/Cloud + Auth") wurde 2026-09-14 bewusst als "nicht geplant" geschlossen, aber mit anderer Begründung (Handy-Zugriff war nie Ziel) — der heutige Wunsch (ChatGPT) ist ein neues, vom User heute (2026-09-24) explizit bestätigtes Ziel und rollt diese alte Entscheidung nicht auf, sondern ergänzt sie.
+- **Nozbe-Referenz:** N/A — Infrastruktur-/Integrationsfeature wie #88, kein Nozbe-UI-Feature.
+- **Ziel / Output:** ChatGPT (Custom GPT mit Actions) kann über eine authentifizierte, öffentlich erreichbare HTTPS-API Tasks lesen, anlegen, planen (Tagesplan-Marker), abhaken und sternen — analog zu den bestehenden 13 MCP-Tools aus #88, aber via REST/OpenAPI statt stdio-MCP.
+- **Scope-Hinweise (bindend aus User-Klärung 2026-09-24, nicht neu verhandeln):**
+  1. Anbindung: **Custom GPT Actions (REST/OpenAPI-Schema)** — kein Remote-MCP-Connector.
+  2. Erreichbarkeit: Server muss **aus dem Internet erreichbar** sein (Tunnel/Reverse-Proxy + TLS), nicht nur LAN.
+  3. Neues GitHub-Issue anlegen (nicht #89 reaktivieren); #88 und #89 als Kontext verlinken.
+  4. Rechte-Scope wie #88: lesen/anlegen/planen/abhaken/sternen. **Kein Löschen, keine Projekt-/Kategorienverwaltung** — Abweichung nur mit expliziter neuer User-Freigabe in der Req-Eng-Grill-me-Session.
+  5. Naming: Instanz-Bezeichnungen durchgängig „SelfManaged" (nicht „Task Manager"), Prod-Suffix „-prod" (z. B. `selfmanaged-prod`) — bereits in der lokalen Claude-Config des Users so umgesetzt; in aller neuen Doku/Config-Beispielen durchziehen.
+- **Acceptance Criteria (grob):** Als User kann ich in einem Custom GPT in ChatGPT per natürlicher Sprache Tasks aus SelfManaged abfragen und anlegen/planen/abhaken/sternen, ohne dass ChatGPT löschen oder Projekte/Kategorien verwalten kann; der Zugriff ist durch einen Auth-Mechanismus (Token/API-Key) geschützt, den nur ich kenne.
+- **Constraints:** Bestehende REST-API (`server/src/routes/*`) wird wiederverwendet/erweitert, kein Parallel-Backend; Auth-Schicht ist neu (bestehende API hat aktuell keine); TLS/Tunnel-Wahl technisch beim Architekten entscheiden (Kandidaten z. B. Cloudflare Tunnel, Reverse-Proxy mit eigenem Zertifikat) — Kosten-/Betriebsimplikationen im Architektur-Abschnitt benennen, da neu ggü. #88 (das war rein lokal/LAN).
+- **Definition of Done (PM-Sicht):** Auth-geschützte HTTPS-API ist von außen erreichbar, OpenAPI-Schema für Custom GPT Actions vorhanden, gleicher funktionaler Umfang wie MCP #88 (minus Löschen/Verwaltung), User hat ChatGPT erfolgreich getestet.
+- **History:**
+  - 2026-09-24: Aus User-Anfrage inkl. Grill-me/Klärung triagiert (Custom GPT Actions, Internet-erreichbar, neues Issue) → direkt gebrieft an /req-engineer.
 
 ### Briefing → /req-engineer: App-Logo & Icons (SelfManaged)
 - **Kontext / Warum:** App läuft mit Platzhalter-Branding (Bolt-Favicon im Tab, Capacitor-Standard-Icon/-Splash auf Android, Electron-Default-Icon). Eigenes Logo schafft Wiedererkennung auf allen drei Plattformen.
