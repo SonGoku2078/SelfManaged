@@ -16,6 +16,28 @@
 > - 2026-09-16 Übergabe an /req-engineer: PROD-Zieltopologie, klare lokale-TEST/Cloud-PROD-Trennung, Auth-/Berechtigungsmodell, Datenmigration, Sonderendpunkte, Cutover und Rollback mit prüfbaren Acceptance Criteria spezifizieren.
 > - 2026-09-16 Requirements abgeschlossen; GitHub Issue #96 erstellt → /architect.
 > - 2026-09-16 Architektur abgeschlossen: statische Site + TablesDB + Storage + zwei Functions (API/ICS), lokale REST-/SQLite-Entwicklung bleibt erhalten → /developer.
+> - 2026-09-17 Cutover durchgeführt und live geschaltet (PR #97, Commit `0580fde`). **Lücke entdeckt am 2026-09-26:** AC10 wurde für Web/Mobile umgesetzt, aber nie für den lokalen MCP-Server (#88) und den daraus abgeleiteten `apps/gpt-actions`-Adapter (#98/PR #99) — beide zeigten weiterhin auf den alten LAN-Server (`192.168.8.187:3001`, seit Cutover nur noch Rollback-Reserve, keine echten Daten mehr). Ein über Codex CLI angelegter Test-Task landete entsprechend im toten System, nicht in echter Produktion. User-Entscheidung: alten Test-Task ignorieren (Rollback-System irrelevant); AC10-Lücke jetzt schließen — **nur für Prod**, keine Test-Umgebungs-Anbindung (die bleibt bewusst offen, eigenes künftiges Thema). → Architektur-Nachtrag unten, dann `/developer`.
+
+### Nachtrag 2026-09-26: AC10 nachziehen — MCP (#88) + GPT-Actions (#98) auf Appwrite-Prod
+
+**Warum kein einfacher URL-Tausch reicht:** Appwrite-PROD-Aufrufe müssen laut 2.6/`src/api/client.ts` zwingend über die **Functions Execution API** laufen (`functions.createExecution(...)`), nicht per direktem `fetch()` auf die Function-Domain — Appwrites Edge entfernt sonst alle `x-appwrite-*`-Header (inkl. JWT). Das erfordert einen echten Appwrite-Benutzer-Login (Session/JWT), keinen Admin-API-Key im Prozess (Sicherheitsvorgabe aus 2.5, gilt für MCP genauso wie für Web/Mobile).
+
+**Auth-Fluss (Node-Prozess, kein Browser):**
+1. Neue Pflicht-Env-Vars für den Appwrite-Prod-Pfad: `APPWRITE_MCP_EMAIL`, `APPWRITE_MCP_PASSWORD` (dediziertes Service-Konto, **nicht** der persönliche Account des Users — vom User selbst einmalig manuell in der Appwrite-Konsole angelegt, damit das Credential nie durch ein KI-Tool läuft). Endpoint/Projekt-ID/Function-ID sind öffentlich und können wie im Web-Client (`.env.appwrite`) fest hinterlegt werden.
+2. Einmaliger Login beim Start: `account.createEmailPasswordSession(...)`, danach `client.setSession(session.secret)`.
+3. JWT-Cache analog `src/appwrite/client.ts::getUserJwt()` (15-Min-JWT, 14-Min-Cache), automatisch erneuert.
+4. Alle Backend-Aufrufe über `functions.createExecution({ functionId: 'selfmanaged-api', xpath, method, body })` — **keine** manuellen `x-appwrite-*`-Header (Execution-API lehnt das ab, Appwrite injiziert sie serverseitig aus der Session).
+
+**Umgebungs-Umschaltung (bewusst zwei getrennte, sich ausschließende Pfade):**
+- **Dev (unverändert):** `TM_API_URL` gesetzt → alter Express-REST-Pfad, lokale `dev.db`, kein Appwrite-Kontakt. Bleibt exakt wie in #88.
+- **Prod (neu):** `APPWRITE_MCP_EMAIL`/`APPWRITE_MCP_PASSWORD` gesetzt → neuer Appwrite-Execution-Pfad. `TM_API_URL` wird für Prod nicht mehr verwendet/benötigt.
+- Weder/beides gesetzt → Exit 1 mit deutscher Klartextmeldung (Muster wie #88 AC-2).
+
+**Geteilter Code statt Duplikat:** Neues Modul `apps/mcp/src/appwriteApi.ts` (Login, JWT-Cache, `createExecution`-Wrapper) wird von `apps/mcp/src/api.ts` **und** `apps/gpt-actions/src/api.ts` importiert (analog zur bestehenden Wiederverwendung von `apps/mcp/src/logic.ts` durch #98) — keine zweite Appwrite-Auth-Implementierung.
+
+**Nicht betroffen:** `logic.ts` (reine Funktionen, kennt keine Transport-Details), alle 13 MCP-Tools bzw. 12 GPT-Actions-Routen, das Rechte-Modell (kein Löschen). Response-Shape der Appwrite-Function (`taskFromRow` in `apps/functions/api/src/main.js`) liefert dieselben Felder wie zuvor der Express-Server — keine Anpassung in `logic.ts` nötig.
+
+**Testbarkeit:** Es gibt bewusst kein Appwrite-Test-Projekt (Nicht-Ziel aus Abschnitt 0). Verifikation gegen Appwrite-Prod erfolgt daher vorsichtig manuell (Task anlegen + sofort wieder löschen/aufräumen über die App), zusätzlich zu den bestehenden `logic.ts`-Unit-Tests (unverändert, transportunabhängig) und Dev-Regression (Express-Pfad weiterhin gegen `localhost:3002`).
 
 ## 1. Requirements
 
