@@ -1,12 +1,16 @@
 // Dünner HTTP-Client auf die bestehende REST-API von SelfManaged (#88).
 // Bewusst ohne DELETE — der Adapter darf nichts löschen (AC-17).
+//
+// Zwei Backends je Umgebungsvariable (Nachtrag 2026-09-26 zu #96/#98):
+// Dev/Express (TM_API_URL) unveraendert seit #88, Prod/Appwrite
+// (APPWRITE_MCP_EMAIL/-PASSWORD) neu ueber das geteilte Modul
+// appwriteApi.ts. tools.ts kennt nur das TaskApi-Interface, nicht welches
+// Backend dahintersteckt.
 import type { ApiCategory, ApiProject, ApiTask } from './logic.js';
+import { APPWRITE_PROD_SITE_URL, appwriteApiFetch } from './appwriteApi.js';
 
 export class ApiError extends Error {}
 
-// Gemeinsame Form fuer beide Backends (klassischer Express-Server und
-// Appwrite-PROD via AppwriteTaskManagerApi in appwriteApi.ts) — tools.ts
-// kennt nur dieses Interface, nicht welches Backend dahintersteckt.
 export interface TaskApi {
   readonly baseUrl: string;
   health(): Promise<{ ok: boolean }>;
@@ -39,6 +43,34 @@ export class TaskManagerApi implements TaskApi {
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
+  }
+
+  health() { return this.request<{ ok: boolean }>('GET', '/health'); }
+  getTasks() { return this.request<ApiTask[]>('GET', '/api/tasks'); }
+  getProjects() { return this.request<ApiProject[]>('GET', '/api/projects'); }
+  getCategories() { return this.request<ApiCategory[]>('GET', '/api/categories'); }
+  createTask(task: Record<string, unknown>) { return this.request<ApiTask>('POST', '/api/tasks', task); }
+  patchTask(id: string, patch: Record<string, unknown>) {
+    return this.request<ApiTask>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch);
+  }
+}
+
+// Appwrite-PROD-Backend: gleiche REST-Pfade, aber ueber die Functions-
+// Execution-API statt fetch() (siehe appwriteApi.ts). `baseUrl` ist die
+// Appwrite-Site-Domain (fuer Deep-Links und envKind()-Erkennung „prod"),
+// nicht die Function-Domain.
+export class AppwriteTaskManagerApi implements TaskApi {
+  readonly baseUrl = APPWRITE_PROD_SITE_URL;
+
+  private async request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
+    try {
+      return await appwriteApiFetch<T>(path, {
+        method,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (e) {
+      throw new ApiError(e instanceof Error ? e.message : String(e), { cause: e });
+    }
   }
 
   health() { return this.request<{ ok: boolean }>('GET', '/health'); }

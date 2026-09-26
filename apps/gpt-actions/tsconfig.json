@@ -13,5 +13,5 @@
     "declaration": false,
     "sourceMap": false
   },
-  "include": ["src/**/*.ts", "../mcp/src/logic.ts"]
+  "include": ["src/**/*.ts", "../mcp/src/logic.ts", "../mcp/src/appwriteApi.ts"]
 }

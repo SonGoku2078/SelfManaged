@@ -3,9 +3,14 @@
 // stdio (wie apps/mcp). Läuft dauerhaft, üblicherweise hinter einem
 // Cloudflare Tunnel auf dem Prod-Host (selfmanaged-prod).
 //
-//   TM_API_URL          Pflicht, kein Standardwert (wie bei #88).
-//                          Dev:  TM_API_URL=http://localhost:3002
-//                          Prod: TM_API_URL=http://192.168.8.187:3001
+// Zwei sich ausschließende Betriebsarten fürs Backend (Nachtrag 2026-09-26
+// zu #96/#98, siehe docs/pipeline/appwrite-prod-test-migration.md):
+//   Dev/Express  (unveraendert): TM_API_URL gesetzt.
+//                  Dev:  TM_API_URL=http://localhost:3002
+//   Prod/Appwrite (neu): APPWRITE_MCP_EMAIL + APPWRITE_MCP_PASSWORD gesetzt.
+//                  Dediziertes Appwrite-Service-Konto, kein Admin-Key.
+// Weder/beides gesetzt → Exit 1 mit deutscher Klartextmeldung.
+//
 //   GPT_ACTIONS_API_KEY  Pflicht, kein Standardwert. Erzeugen z. B. mit
 //                          openssl rand -hex 32
 //   GPT_ACTIONS_PORT     Optional, Standard 3003 (kollidiert nicht mit
@@ -16,7 +21,8 @@
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { authFailureLimiter, requireApiKey } from './auth.js';
-import { TaskManagerApi } from './api.js';
+import { AppwriteTaskManagerApi, TaskManagerApi, type TaskApi } from './api.js';
+import { resolveTransportMode, TransportConfigError, type TransportMode } from '../../mcp/src/appwriteApi.js';
 import { buildRouter, errorHandler } from './routes.js';
 
 function readEnv(name: string, beispiel: string): string {
@@ -31,20 +37,22 @@ function readEnv(name: string, beispiel: string): string {
   return raw;
 }
 
-function readBaseUrl(): string {
-  const raw = readEnv('TM_API_URL', 'http://localhost:3002').replace(/\/+$/, '');
-  if (!/^https?:\/\//i.test(raw)) {
-    console.error(`FEHLER: TM_API_URL muss mit http:// oder https:// beginnen (ist: „${raw}").`);
+function buildApi(): TaskApi {
+  let mode: TransportMode;
+  try {
+    mode = resolveTransportMode();
+  } catch (e) {
+    const msg = e instanceof TransportConfigError ? e.message : String(e);
+    console.error(`FEHLER: ${msg}`);
     process.exit(1);
   }
-  return raw;
+  return mode.kind === 'express' ? new TaskManagerApi(mode.baseUrl) : new AppwriteTaskManagerApi();
 }
 
 const apiKey = readEnv('GPT_ACTIONS_API_KEY', '(z. B. mit: openssl rand -hex 32)');
-const baseUrl = readBaseUrl();
 const port = Number(process.env.GPT_ACTIONS_PORT ?? 3003);
 
-const api = new TaskManagerApi(baseUrl);
+const api = buildApi();
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
@@ -62,5 +70,5 @@ app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
 });
 
 app.listen(port, () => {
-  console.log(`gpt-actions verbunden mit ${baseUrl}, hört auf Port ${port}.`);
+  console.log(`gpt-actions verbunden mit ${api.baseUrl}, hört auf Port ${port}.`);
 });

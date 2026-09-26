@@ -28,13 +28,14 @@ SelfManaged: Projekte und Tasks lesen, Tagesplan abfragen, Tasks anlegen, für e
 Fälligkeit setzen, ★ setzen, abhaken. **Kein Löschen, keine Projektverwaltung.** Der Server ist ein
 dünner Adapter auf die bestehende REST-API und braucht keine Server-Änderung.
 
-Die Ziel-Adresse kommt **ausschließlich** aus `TM_API_URL` (kein Standardwert; ohne Variable startet
-der Prozess nicht):
+Zwei sich **gegenseitig ausschließende** Betriebsarten, je gesetzter Umgebungsvariable (kein
+Standardwert; ohne eine von beiden startet der Prozess nicht — Nachtrag 2026-09-26, seit dem
+Appwrite-Prod-Cutover #97):
 
-| Umgebung | `TM_API_URL` |
+| Umgebung | Variable(n) |
 |---|---|
-| Dev (Tests, Claude Code via `.mcp.json`) | `http://localhost:3002` |
-| Prod (Alltag, Claude Desktop) | `http://192.168.8.187:3001` |
+| Dev (Tests, Claude Code via `.mcp.json`) | `TM_API_URL=http://localhost:3002` |
+| Prod (Alltag, Claude Desktop/Codex) | `APPWRITE_MCP_EMAIL=…` + `APPWRITE_MCP_PASSWORD=…` |
 
 ```bash
 npm run build:mcp                 # baut apps/mcp/dist (Teil von npm run build)
@@ -43,19 +44,41 @@ npm run mcp:dev                   # startet den Server gegen Dev (stdio; zum Deb
 
 **Claude Code:** `.mcp.json` im Repo registriert den Server automatisch gegen Dev (`npm run dev:server` muss laufen).
 
+**Prod braucht ein dediziertes Appwrite-Benutzerkonto:** Seit dem Appwrite-Cutover (#97) läuft
+PROD nicht mehr über einen LAN-Server, sondern über die `selfmanaged-api`-Function im Appwrite-
+Projekt. Der MCP-/gpt-actions-Prozess meldet sich dafür selbst per E-Mail/Passwort an — **nicht**
+mit einem Admin-API-Key, damit kein KI-Tool je einen Admin-Zugriff sieht. Der User legt dieses
+Konto **einmalig manuell** an: Appwrite-Konsole → **Auth → Users → Create user** (eigene
+E-Mail-Adresse + generiertes Passwort reichen; das Konto braucht keine Sonderrolle, die
+Appwrite-Tabellenberechtigungen greifen automatisch für jeden angemeldeten Nutzer). Dieses
+Credential wird **nie** von einem KI-Tool erzeugt oder gelesen — es wird ausschließlich vom
+User in der jeweiligen Client-Konfiguration (Claude Desktop, Codex) eingetragen.
+
 **Claude Desktop (Prod):** in `%APPDATA%\Claude\claude_desktop_config.json` eintragen (Pfad anpassen):
 ```json
 {
   "mcpServers": {
-    "selfmanaged": {
+    "selfmanaged-prod": {
       "command": "node",
       "args": ["C:\\Pfad\\zum\\Repo\\apps\\mcp\\dist\\index.js"],
-      "env": { "TM_API_URL": "http://192.168.8.187:3001" }
+      "env": {
+        "APPWRITE_MCP_EMAIL": "…",
+        "APPWRITE_MCP_PASSWORD": "…"
+      }
     }
   }
 }
 ```
-Danach Claude Desktop neu starten. Sprache: Windows-Diktat (Win+H) ins Eingabefeld. Beispiele:
+
+**Codex CLI (Prod):** in `~/.codex/config.toml` analog eintragen (Pfad anpassen):
+```toml
+[mcp_servers.selfmanaged-prod]
+command = "node"
+args = ["/pfad/zum/repo/apps/mcp/dist/index.js"]
+env = { APPWRITE_MCP_EMAIL = "…", APPWRITE_MCP_PASSWORD = "…" }
+```
+
+Danach Claude Desktop bzw. Codex neu starten. Sprache: Windows-Diktat (Win+H) ins Eingabefeld. Beispiele:
 „Was ist mein Plan für heute?", „Welche nächsten Schritte hat Projekt X?", „Leg einen Task … im Projekt … an",
 „Lass uns den Plan für morgen definieren".
 
@@ -73,13 +96,22 @@ in `apps/gpt-actions/openapi.yaml` (direkt in eine Custom-GPT-Action importierba
 openssl rand -hex 32
 ```
 
-Ergebnis als `GPT_ACTIONS_API_KEY` setzen (Umgebungsvariable auf `selfmanaged-prod`, **kein**
-Hardcoding, **kein** Standardwert — ohne die Variable startet der Prozess nicht, analog `TM_API_URL`):
+Ergebnis als `GPT_ACTIONS_API_KEY` setzen (Umgebungsvariable auf dem Host, der `apps/gpt-actions`
+betreibt, **kein** Hardcoding, **kein** Standardwert — ohne die Variable startet der Prozess
+nicht, analog zu den Backend-Variablen unten).
 
-| Umgebung | `TM_API_URL` | `GPT_ACTIONS_API_KEY` | `GPT_ACTIONS_PORT` |
+Backend-Anbindung: dieselben zwei sich ausschließenden Betriebsarten wie beim MCP-Server oben
+(Nachtrag 2026-09-26, seit dem Appwrite-Prod-Cutover #97):
+
+| Umgebung | Backend-Variable(n) | `GPT_ACTIONS_API_KEY` | `GPT_ACTIONS_PORT` |
 |---|---|---|---|
-| Dev (Tests, `npm run gpt-actions:dev`) | `http://localhost:3002` | Platzhalter im Script | 3003 (Default) |
-| Prod (`selfmanaged-prod`, ChatGPT) | `http://192.168.8.187:3001` | dein per `openssl` erzeugter Key | 3003 (Default) |
+| Dev (Tests, `npm run gpt-actions:dev`) | `TM_API_URL=http://localhost:3002` | Platzhalter im Script | 3003 (Default) |
+| Prod (ChatGPT) | `APPWRITE_MCP_EMAIL=…` + `APPWRITE_MCP_PASSWORD=…` | dein per `openssl` erzeugter Key | 3003 (Default) |
+
+Für Prod gilt dasselbe dedizierte Appwrite-Benutzerkonto wie beim MCP-Server (siehe oben,
+Abschnitt „Prod braucht ein dediziertes Appwrite-Benutzerkonto") — **ein** einmalig manuell
+angelegtes Konto reicht für beide Adapter (MCP + gpt-actions), da beide nur lesen/anlegen/planen/
+sternen/abhaken dürfen und dieselben Appwrite-Tabellenberechtigungen greifen.
 
 ```bash
 npm run build:gpt-actions          # baut apps/gpt-actions/dist (Teil von npm run build)

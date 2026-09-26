@@ -2,71 +2,35 @@
 // MCP-Server für SelfManaged (#88): KI-Clients (Claude Desktop / Claude
 // Code) sprechen ihn per stdio an; er ruft die bestehende REST-API auf.
 //
-// Zwei Backends, je nach gesetzten Umgebungsvariablen (#98):
-//   Appwrite-PROD: TM_APPWRITE_EMAIL + TM_APPWRITE_PASSWORD gesetzt.
-//     TM_APPWRITE_PROJECT_ID  Appwrite-Projekt-ID
-//     TM_APPWRITE_ENDPOINT    Appwrite-API-Endpunkt (Default: fra.cloud.appwrite.io/v1)
-//     TM_APPWRITE_FUNCTION_ID Function-ID der API (Default: selfmanaged-api)
-//     TM_APPWRITE_SITE_URL    Site-URL fuer Deep-Links (Default: die PROD-Domain)
-//   Klassisch (Express/SQLite, Dev/Test und der alte LAN-Server):
-//     TM_API_URL (Pflicht, kein Standardwert — Entscheidung 7).
-//       Dev:  TM_API_URL=http://localhost:3002
-//       Alt-Prod: TM_API_URL=http://192.168.8.187:3001
+// Zwei sich ausschließende Betriebsarten (Nachtrag 2026-09-26 zu #96/#98,
+// siehe docs/pipeline/appwrite-prod-test-migration.md):
+//   Dev/Express  (unveraendert seit #88): TM_API_URL gesetzt.
+//     TM_API_URL=http://localhost:3002
+//   Prod/Appwrite (neu): APPWRITE_MCP_EMAIL + APPWRITE_MCP_PASSWORD gesetzt.
+//     Dediziertes Appwrite-Service-Konto, einmalig manuell in der Appwrite-
+//     Konsole angelegt — niemals der persoenliche Account, niemals ein
+//     Admin-API-Key. Endpoint/Projekt/Function-ID sind oeffentlich und in
+//     appwriteApi.ts fest hinterlegt.
+// Weder/beides gesetzt → Exit 1 mit deutscher Klartextmeldung.
 //
 // stdout ist der MCP-Kanal — Diagnose ausschließlich über stderr.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { TaskManagerApi, type TaskApi } from './api.js';
-import { AppwriteTaskManagerApi } from './appwriteApi.js';
+import { AppwriteTaskManagerApi, TaskManagerApi, type TaskApi } from './api.js';
+import { resolveTransportMode, TransportConfigError, type TransportMode } from './appwriteApi.js';
 import { envKind } from './logic.js';
 import { registerTools } from './tools.js';
 
-const DEFAULT_APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
-const DEFAULT_APPWRITE_FUNCTION_ID = 'selfmanaged-api';
-const DEFAULT_APPWRITE_SITE_URL = 'https://selfmanaged-prod-6aaa45fb.appwrite.network';
-
-function readClassicBaseUrl(): string {
-  const raw = (process.env.TM_API_URL ?? '').trim().replace(/\/+$/, '');
-  if (!raw) {
-    console.error(
-      'FEHLER: Weder TM_APPWRITE_EMAIL/TM_APPWRITE_PASSWORD noch TM_API_URL gesetzt. Eines von beiden muss den Server festlegen, z. B.\n' +
-        '  TM_API_URL=http://localhost:3002        (Entwicklung)\n' +
-        '  TM_API_URL=http://192.168.8.187:3001     (alter LAN-Server)\n' +
-        '  TM_APPWRITE_EMAIL=… TM_APPWRITE_PASSWORD=…  (Appwrite-PROD)\n' +
-        'Es gibt absichtlich keinen Standardwert.',
-    );
-    process.exit(1);
-  }
-  if (!/^https?:\/\//i.test(raw)) {
-    console.error(`FEHLER: TM_API_URL muss mit http:// oder https:// beginnen (ist: „${raw}").`);
-    process.exit(1);
-  }
-  return raw;
-}
-
 function buildApi(): TaskApi {
-  const email = (process.env.TM_APPWRITE_EMAIL ?? '').trim();
-  const password = process.env.TM_APPWRITE_PASSWORD ?? '';
-  if (email && password) {
-    const projectId = (process.env.TM_APPWRITE_PROJECT_ID ?? '').trim();
-    if (!projectId) {
-      console.error('FEHLER: TM_APPWRITE_PROJECT_ID fehlt (noetig zusammen mit TM_APPWRITE_EMAIL/-PASSWORD).');
-      process.exit(1);
-    }
-    return new AppwriteTaskManagerApi({
-      endpoint: (process.env.TM_APPWRITE_ENDPOINT ?? DEFAULT_APPWRITE_ENDPOINT).trim().replace(/\/+$/, ''),
-      projectId,
-      functionId: (process.env.TM_APPWRITE_FUNCTION_ID ?? DEFAULT_APPWRITE_FUNCTION_ID).trim(),
-      siteUrl: (process.env.TM_APPWRITE_SITE_URL ?? DEFAULT_APPWRITE_SITE_URL).trim().replace(/\/+$/, ''),
-      email,
-      password,
-    });
-  }
-  if (email || password) {
-    console.error('FEHLER: TM_APPWRITE_EMAIL und TM_APPWRITE_PASSWORD müssen beide gesetzt sein (nur eines gefunden).');
+  let mode: TransportMode;
+  try {
+    mode = resolveTransportMode();
+  } catch (e) {
+    const msg = e instanceof TransportConfigError ? e.message : String(e);
+    console.error(`FEHLER: ${msg}`);
     process.exit(1);
   }
-  return new TaskManagerApi(readClassicBaseUrl());
+  return mode.kind === 'express' ? new TaskManagerApi(mode.baseUrl) : new AppwriteTaskManagerApi();
 }
 
 async function main(): Promise<void> {

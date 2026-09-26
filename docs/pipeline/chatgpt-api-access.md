@@ -259,5 +259,47 @@ Owner-Role: `/cicd-engineer`
   5. `openapi.yaml` in eine neue Custom-GPT-Action in ChatGPT importieren, Bearer-Key hinterlegen, die vier Beispiel-Dialoge aus #88 testen
 - **Abschluss:** Status `blocked` — wartet auf User: PR-Review/Merge-Freigabe + die oben genannten Deployment-Schritte + Anwender-Nachweis (AC-5, AC-13). Kein technischer Blocker mehr auf Entwickler-/Pipeline-Seite.
 
+## 7. Appwrite-Prod-Anbindung (Nachtrag)
+
+> Bezug: Nachtrag 2026-09-26 in `docs/pipeline/appwrite-prod-test-migration.md` (AC10-Lücke bei
+> #96). PROD lief seit dem Appwrite-Cutover (PR #97, Commit `0580fde`, 2026-09-17) bereits
+> vollständig über Appwrite — `apps/gpt-actions` wurde jedoch (wie `apps/mcp`, #88) ohne Kenntnis
+> des Cutovers gebaut und zeigte weiterhin auf den alten LAN-Server (`TM_API_URL=
+> http://192.168.8.187:3001`), der seit dem Cutover nur noch tote Rollback-Reserve ohne echte
+> Daten ist. Jeder über ChatGPT angelegte Task wäre entsprechend im toten System gelandet statt
+> in echter Produktion.
+
+**Was geändert wurde:** `apps/gpt-actions/src/api.ts` unterstützt jetzt, genau wie
+`apps/mcp/src/api.ts`, zwei sich gegenseitig ausschließende Backend-Betriebsarten:
+Dev/Express (`TM_API_URL`, unverändert) oder Prod/Appwrite (`APPWRITE_MCP_EMAIL` +
+`APPWRITE_MCP_PASSWORD`, neu). Die Appwrite-Login-/Execution-Logik liegt in einem einzigen
+geteilten Modul `apps/mcp/src/appwriteApi.ts`, das `apps/gpt-actions` genauso importiert wie
+bereits `apps/mcp/src/logic.ts` (kein Auth-Code doppelt). Sind beide Betriebsarten gesetzt oder
+keine, bricht der Prozess mit einer deutschen Klartextmeldung ab (Exit 1) — analog zum
+bestehenden `TM_API_URL`-Fehlerpfad.
+
+**Warum das dieses Feature (#98) betrifft, aber nicht neu spezifiziert werden musste:** AC-1
+(dünner Adapter statt direktem `/api/*`-Durchreichen), AC-6…AC-9 (Funktionsumfang, Adressierung,
+Sicherheitsgrenzen) und AC-11 (Rate-Limiting) sind reine Transport-agnostische Eigenschaften von
+`logic.ts`/`routes.ts`/`auth.ts` und bleiben unverändert — nur *welches* Backend hinter `api.ts`
+steckt, ist neu. Es gibt keine neue GitHub-Issue-Nummer für diesen Nachtrag; er hängt an #96 (der
+Appwrite-Migration), nicht an #98 selbst.
+
+**AC-5 (Cloudflare Tunnel) und AC-13 (Custom-GPT-Anwendernachweis) sind unberührt und weiterhin
+offen:** Beide Punkte betreffen ausschließlich die Erreichbarkeit von `apps/gpt-actions` selbst
+(Tunnel-Aktivierung, ChatGPT-Custom-GPT-Einrichtung) — unabhängig davon, ob der Prozess dahinter
+gegen den alten LAN-Server oder gegen Appwrite spricht. Dieser Nachtrag blockiert sie nicht und
+wird durch sie nicht blockiert; sie bleiben der ausstehende Anwender-Nachweis dieses Features.
+
+**Test-/Verifikationsstand dieses Nachtrags:** siehe `docs/pipeline/appwrite-prod-test-migration.md`,
+Abschnitt „Nachtrag 2026-09-26" für die Architekturentscheidung. Verifiziert wurden Build
+(Web/Server/MCP/gpt-actions), `npm test` (inkl. neuem Test der Transport-Umschaltung) und der
+unveränderte Express/Dev-Rauchtest (`apps/gpt-actions/smoke.mjs` gegen `localhost:3002`,
+weiterhin 22/22). Ein echter Appwrite-Prod-Smoke-Test war nicht möglich und ist nicht Teil dieser
+Verifikation — das dedizierte Appwrite-Service-Konto (`APPWRITE_MCP_EMAIL`/`-PASSWORD`) existiert
+noch nicht; der User legt es einmalig manuell in der Appwrite-Konsole an (siehe README-Abschnitt
+„Prod braucht ein dediziertes Appwrite-Benutzerkonto"), danach ist der Anwender-Nachweis analog
+TF-20 (#88) fällig.
+
 ### Summary
-REST-Adapter für ChatGPT-Zugriff (#98) ist fertig implementiert, getestet (Gate: GO) und als PR [#99](https://github.com/SonGoku2078/SelfManaged/pull/99) bereit zum Review. Gleicher Funktionsumfang wie der bestehende MCP-Server (#88), aber HTTP + Bearer-Auth statt stdio, kein Löschen. Merge und Live-Schaltung (Tunnel, Key, Custom GPT) liegen beim User.
+REST-Adapter für ChatGPT-Zugriff (#98) ist fertig implementiert, getestet (Gate: GO) und als PR [#99](https://github.com/SonGoku2078/SelfManaged/pull/99) bereit zum Review. Gleicher Funktionsumfang wie der bestehende MCP-Server (#88), aber HTTP + Bearer-Auth statt stdio, kein Löschen. Merge und Live-Schaltung (Tunnel, Key, Custom GPT) liegen beim User. **Nachtrag 2026-09-26:** Backend zeigt jetzt wahlweise auf Appwrite-Prod statt auf den toten LAN-Server (Details Abschnitt 7); AC-5/AC-13 unverändert offen.

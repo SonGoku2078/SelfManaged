@@ -34,7 +34,7 @@
     "icons": "node scripts/generate-icons.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "tsx scripts/recurrence.test.ts && tsx scripts/todayflag.test.ts && tsx scripts/ics.test.ts && tsx scripts/widgetmeta.test.ts && tsx scripts/sharefields.test.ts && tsx scripts/pomodoro.test.ts && tsx scripts/evernote.test.ts && tsx scripts/totals.test.ts && tsx scripts/mobileweek.test.ts && tsx scripts/todaymarker.test.ts && tsx scripts/mcp.test.ts && tsx scripts/gpt-actions.test.ts",
+    "test": "tsx scripts/recurrence.test.ts && tsx scripts/todayflag.test.ts && tsx scripts/ics.test.ts && tsx scripts/widgetmeta.test.ts && tsx scripts/sharefields.test.ts && tsx scripts/pomodoro.test.ts && tsx scripts/evernote.test.ts && tsx scripts/totals.test.ts && tsx scripts/mobileweek.test.ts && tsx scripts/todaymarker.test.ts && tsx scripts/mcp.test.ts && tsx scripts/gpt-actions.test.ts && tsx scripts/appwrite-transport.test.ts",
     "test:report": "node scripts/run-tests.mjs",
     "test:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-summary.test.ps1",
     "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-remote.ps1",
