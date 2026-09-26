@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { parseQuickAdd } from '../quickParse';
 import { dateKey } from '../selectors';
+import { listenOnce } from '../voice';
 import type { MobileTab } from './Navigation';
 
 // Quick-add for the flat list tabs. Mirrors the desktop: the active view seeds
@@ -13,6 +14,8 @@ export default function QuickAdd({ tab }: { tab: MobileTab }) {
   const projects = useStore((s) => s.projects);
   const categories = useStore((s) => s.categories);
   const [title, setTitle] = useState('');
+  const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
 
   const submit = () => {
     const raw = title.trim();
@@ -35,20 +38,45 @@ export default function QuickAdd({ tab }: { tab: MobileTab }) {
     setTitle('');
   };
 
+  // Diktat füllt nur das Feld (AC-3: Sichtkontrolle vor dem Anlegen) —
+  // "Task anlegen" läuft danach unverändert über submit().
+  const dictate = async () => {
+    setVoiceError('');
+    setListening(true);
+    const result = await listenOnce();
+    setListening(false);
+    if (result.ok) {
+      setTitle(result.text);
+    } else {
+      setVoiceError(result.error);
+    }
+  };
+
   return (
-    <div className="m-quickadd">
-      <input
-        className="m-quickadd-input"
-        placeholder="+ Neue Aufgabe…"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') submit();
-        }}
-      />
-      <button className="m-quickadd-add" onClick={submit} disabled={!title.trim()}>
-        +
-      </button>
+    <div className="m-quickadd-wrap">
+      <div className="m-quickadd">
+        <input
+          className="m-quickadd-input"
+          placeholder="+ Neue Aufgabe…"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+          }}
+        />
+        <button
+          className={`m-quickadd-mic${listening ? ' listening' : ''}`}
+          onClick={dictate}
+          disabled={listening}
+          title="Diktieren"
+        >
+          {listening ? '●' : '🎤'}
+        </button>
+        <button className="m-quickadd-add" onClick={submit} disabled={!title.trim()}>
+          +
+        </button>
+      </div>
+      {voiceError && <div className="m-quickadd-voice-error">{voiceError}</div>}
     </div>
   );
 }

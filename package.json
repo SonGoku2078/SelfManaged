@@ -41,6 +41,7 @@
     "release:local-legacy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-local-legacy.ps1"
   },
   "dependencies": {
+    "@capacitor-community/speech-recognition": "^7.0.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/preferences": "^8.0.1",

@@ -5,6 +5,7 @@
   "type": "module",
   "comment": "Reuses the repo-root node_modules; deps are listed here so the Capacitor CLI registers the NATIVE plugin projects (cap sync scans this package.json).",
   "dependencies": {
+    "@capacitor-community/speech-recognition": "^7.0.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/preferences": "^8.0.1"

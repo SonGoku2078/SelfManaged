@@ -75,4 +75,7 @@
          verworfen. USE_EXACT_ALARM wird ohne Nutzerdialog gewährt. -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Diktier-Mikrofonbutton (#101): natives Android-Spracherkennung braucht
+         RECORD_AUDIO; die Berechtigungsabfrage übernimmt das Plugin selbst. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 </manifest>
