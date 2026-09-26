@@ -19,6 +19,7 @@
 > - 2026-09-14 PR #91 erstellt, CI grün; Merge vom Auto-Modus blockiert → Entscheidung User
 > - 2026-09-14 User-Freigabe → PR #91 gemergt (0d4fa5d), #88 geschlossen → done
 > - 2026-09-14 Nachtrag: Prod-Server hat per DHCP die IP 192.168.8.187 (statt .50); `envKind` erkennt Prod jetzt an `:3001` ohne localhost; Konfigs (Claude Code user-scope `task-manager-prod`, Claude Desktop, deploy.local.json) umgestellt. Erster echter Tagesplan-Abruf erfolgreich.
+> - 2026-09-26 Nachtrag: User will denselben lokalen Zugriff auch aus **OpenAI Codex CLI** heraus (statt eines Cloudflare-Tunnel/Custom-GPT-Actions-Wegs für die ChatGPT-Chat-App — die unterstützt laut OpenAI kein lokales stdio-MCP, nur Remote-HTTPS). Codex CLI ist technisch ein eigenständiger MCP-Client (anders als die ChatGPT-Chat-App) und funktioniert mit dem unveränderten `apps/mcp`-Server aus #88 — es existierten bereits Ad-hoc-Konfigeinträge (`.codex/config.toml` im Repo für Dev, globale `~/.codex/config.toml` für Prod als `selfmanaged-prod`). Aufräumen: doppelte/veraltete Codex-Einträge (`task-manager`, `task-manager-prod`, alter Repo-Pfad) aus der globalen Config entfernt; README um Codex-CLI-Setup-Block ergänzt (analog Claude Desktop). Kein Server-Code geändert — reine Konfig-/Doku-Klarstellung, kein neuer Pipeline-Durchlauf nötig. Naming durchgängig `selfmanaged`/`selfmanaged-prod`.
 
 ## 0. Ausgangslage (aus der Grill-me-Session)
 

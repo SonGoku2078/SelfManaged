@@ -39,6 +39,12 @@
 
 **Testbarkeit:** Es gibt bewusst kein Appwrite-Test-Projekt (Nicht-Ziel aus Abschnitt 0). Verifikation gegen Appwrite-Prod erfolgt daher vorsichtig manuell (Task anlegen + sofort wieder löschen/aufräumen über die App), zusätzlich zu den bestehenden `logic.ts`-Unit-Tests (unverändert, transportunabhängig) und Dev-Regression (Express-Pfad weiterhin gegen `localhost:3002`).
 
+**Korrektur nach Live-Test 2026-09-26 (zwei reale Blocker, die die ursprüngliche Nachtrag-Fassung nicht kannte):**
+1. **Berechtigungsmodell ist inzwischen `Role.team('selfmanaged-team')`, nicht mehr `Role.users()`** wie in Abschnitt 2.5 beschrieben (siehe `scripts/appwrite/config.mjs`/`setup-team.mjs` — offenbar nach dem Cutover verschärft, ohne dass dieses Artefakt nachgezogen wurde). Ein neu angelegter Appwrite-Benutzer hat dadurch **ohne Team-Mitgliedschaft null Zugriff**, selbst mit korrektem Login. **Operativer Schritt, kein Code:** das dedizierte Service-Konto muss einmalig per `teams.createMembership({ teamId: 'selfmanaged-team', roles: ['member'], userId })` zum Team hinzugefügt werden (mit dem lokalen Admin-Key aus `.appwrite.local`, wie die bestehenden `scripts/appwrite/*.mjs`) — **`member`, nicht `owner`**, geringstmögliche Berechtigung fürs Service-Konto. Am 2026-09-26 einmalig manuell ausgeführt.
+2. **`account.createEmailPasswordSession()` + `client.setSession(session.secret)` funktioniert in Node NICHT** — Appwrite liefert das `secret`-Feld im JSON-Body aus Sicherheitsgründen leer zurück und setzt die eigentliche Session nur als `Set-Cookie`-Response-Header. Im Browser fängt die Cookie-Jar das automatisch auf; `fetch()` in Node hat keine. **Fix in `apps/mcp/src/appwriteApi.ts`:** roher `fetch()` auf `POST /account/sessions/email`, `Set-Cookie`-Header einsammeln (`res.headers.getSetCookie()`), per `client.setCookie(...)` an alle folgenden SDK-Aufrufe weiterreichen — dafür ist `Client.setCookie()` im SDK laut eigenem Kommentar explizit vorgesehen ("forward an incoming Cookie header in server-side runtimes").
+
+Beides gemeinsam (Team-Mitgliedschaft + Cookie-Fix) am 2026-09-26 gegen echtes Prod verifiziert: `health()` ok, `getProjects()` → 123 Projekte, `getTasks()` → 1643 Tasks, alles reale Produktionsdaten. Kein Schreibtest gegen Prod durchgeführt (bewusst, um keine Test-Daten in echte Nutzerdaten zu mischen, ohne User-Rückfrage).
+
 ## 1. Requirements
 
 - **GitHub Issue:** [#96](https://github.com/SonGoku2078/Task-Manager/issues/96)

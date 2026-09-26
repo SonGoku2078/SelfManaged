@@ -17,7 +17,7 @@
 // (functions.createExecution) — ein direkter fetch() auf die Function-
 // HTTP-Domain funktioniert nicht: Appwrites Edge entfernt dabei jeden
 // x-appwrite-*-Header (siehe src/api/client.ts::appwriteApiFetch).
-import { Account, Client, ExecutionMethod, Functions } from 'appwrite';
+import { Client, ExecutionMethod, Functions } from 'appwrite';
 
 // Oeffentlich, kein Secret (siehe .env.appwrite / src/appwrite/client.ts).
 const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
@@ -39,6 +39,16 @@ interface AppwriteSession {
 let session: AppwriteSession | null = null;
 let loginPromise: Promise<AppwriteSession> | null = null;
 
+// Bewusst ein roher fetch() auf /account/sessions/email statt
+// account.createEmailPasswordSession() aus dem SDK: Appwrite liefert das
+// Session-„secret" im JSON-Body nur leer zurück (Sicherheitsmaßnahme) und
+// setzt die eigentliche Session stattdessen als Set-Cookie-Header — im
+// Browser fängt das die Cookie-Jar automatisch auf, in Node (fetch ohne
+// Cookie-Jar) muss der Cookie-Header manuell eingesammelt und über
+// client.setCookie() an alle folgenden SDK-Aufrufe weitergereicht werden
+// (siehe Kommentar zu Client.setCookie() im SDK: „Used by SDKs that forward
+// an incoming Cookie header in server-side runtimes"). Verifiziert gegen
+// das echte Appwrite-Prod-Projekt am 2026-09-26.
 async function login(): Promise<AppwriteSession> {
   const email = (process.env.APPWRITE_MCP_EMAIL ?? '').trim();
   const password = process.env.APPWRITE_MCP_PASSWORD ?? '';
@@ -47,16 +57,27 @@ async function login(): Promise<AppwriteSession> {
       'APPWRITE_MCP_EMAIL/APPWRITE_MCP_PASSWORD fehlen — Appwrite-Prod-Login nicht möglich.',
     );
   }
-  const client = new Client().setEndpoint(APPWRITE_ENDPOINT).setProject(APPWRITE_PROJECT_ID);
-  const account = new Account(client);
-  let createdSession;
+  let res: Response;
   try {
-    createdSession = await account.createEmailPasswordSession({ email, password });
+    res = await fetch(`${APPWRITE_ENDPOINT}/account/sessions/email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Appwrite-Project': APPWRITE_PROJECT_ID },
+      body: JSON.stringify({ email, password }),
+    });
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
-    throw new AppwriteAuthError(`Appwrite-Login fehlgeschlagen: ${why}`, { cause: e });
+    throw new AppwriteAuthError(`Appwrite-Login nicht erreichbar: ${why}`, { cause: e });
   }
-  client.setSession(createdSession.secret);
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new AppwriteAuthError(`Appwrite-Login fehlgeschlagen: ${res.status} ${text}`);
+  }
+  const setCookie = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+  if (setCookie.length === 0) {
+    throw new AppwriteAuthError('Appwrite-Login lieferte keine Session (kein Set-Cookie-Header).');
+  }
+  const cookieHeader = setCookie.map((c) => c.split(';')[0]).join('; ');
+  const client = new Client().setEndpoint(APPWRITE_ENDPOINT).setProject(APPWRITE_PROJECT_ID).setCookie(cookieHeader);
   return { functions: new Functions(client) };
 }
 
