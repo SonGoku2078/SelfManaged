@@ -3,12 +3,15 @@ info:
   title: SelfManaged GPT Actions
   description: >
     Dünner REST-Adapter auf SelfManaged (#98) für ChatGPT Custom GPT Actions.
-    Erlaubte Operationen: lesen, anlegen, planen, Fälligkeit setzen, sternen,
-    abhaken. Kein Löschen, keine Projekt-/Kategorienverwaltung. ★ = "Nächste
-    Aktion" (vom Nutzer markiert) — nicht dasselbe wie ein Fälligkeitsdatum.
-    "Für einen Tag planen" (Tagesplan-Marker) ist ebenfalls nicht dasselbe wie
+    Erlaubte Operationen auf Tasks: lesen, anlegen, bearbeiten (beliebige
+    Felder), planen, Fälligkeit setzen, sternen, abhaken, löschen (#100).
+    Projekte/Kategorien bleiben weiterhin nur lesbar. ★ = "Nächste Aktion"
+    (vom Nutzer markiert) — nicht dasselbe wie ein Fälligkeitsdatum. "Für
+    einen Tag planen" (Tagesplan-Marker) ist ebenfalls nicht dasselbe wie
     "fällig am" (Termin/Deadline). Fehlt ein Projekt oder Datum, beim Nutzer
-    nachfragen statt zu raten.
+    nachfragen statt zu raten. Löschen ist endgültig — ChatGPT sollte den
+    Nutzer vor dem Aufruf von DELETE /v1/tasks/{ref} explizit bestätigen
+    lassen.
   version: "1.0.0"
 servers:
   - url: https://selfmanaged-prod.example.com
@@ -362,6 +365,80 @@ paths:
                     type: boolean
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/tasks/{ref}:
+    patch:
+      operationId: editTask
+      summary: Task bearbeiten (beliebige Felder)
+      description: Ändert beliebige Felder eines bestehenden Tasks (nur die angegebenen — alle anderen bleiben unverändert). inInboxVerschieben=true entfernt das Projekt (Task landet in der Inbox). Mindestens ein Feld muss angegeben werden.
+      parameters:
+        - $ref: "#/components/parameters/TaskRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                beschreibung:
+                  type: string
+                projektId:
+                  type: string
+                projektName:
+                  type: string
+                inInboxVerschieben:
+                  type: boolean
+                  description: true = Task aus seinem Projekt entfernen (landet in der Inbox)
+                prioritaet:
+                  type: string
+                  enum: [low, medium, high]
+                kategorien:
+                  type: array
+                  items:
+                    type: string
+                  description: Neue Kategorienamen (ersetzen die bisherigen; müssen existieren)
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteTask
+      summary: Task löschen
+      description: >
+        Löscht einen Task endgültig — kann NICHT rückgängig gemacht werden.
+        ChatGPT sollte den Nutzer vor diesem Aufruf explizit bestätigen
+        lassen (welcher Task per Titel/Nummer nennen), bevor es diese Aktion
+        ausführt.
+      parameters:
+        - $ref: "#/components/parameters/TaskRef"
+      responses:
+        "200":
+          description: Gelöschter Task (zur Bestätigung)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  geloescht:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      number:
+                        type: integer
+                      title:
+                        type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":

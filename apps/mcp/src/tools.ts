@@ -1,4 +1,5 @@
-// Die 13 Werkzeuge des MCP-Servers (#88). Verdrahtet api.ts + logic.ts.
+// Die 15 Werkzeuge des MCP-Servers (#88, seit #100 mit task_bearbeiten/
+// task_loeschen). Verdrahtet api.ts + logic.ts.
 // Jede Antwort: vorlesbarer deutscher Text + structuredContent; Fehler als
 // isError mit Klartext (AC-18) — nie ein Prozessabsturz.
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -10,6 +11,7 @@ import {
   completePatch,
   dateKey,
   duePatch,
+  editPatch,
   envKind,
   findTask,
   formatTaskLine,
@@ -329,6 +331,47 @@ export function registerTools(server: McpServer, api: TaskApi): void {
       const recurring = r.updated.recurrence && r.updated.recurrence !== 'none';
       const hint = done && recurring ? ' — Hinweis: wiederkehrender Task, der nächste Termin wird erst in der App erzeugt.' : '';
       return ok(r.text + hint, { task: r.summary, wiederkehrend: !!recurring });
+    }),
+  );
+
+  server.registerTool(
+    'task_bearbeiten',
+    {
+      title: 'Task bearbeiten',
+      description: `Ändert beliebige Felder eines bestehenden Tasks (nur die angegebenen — alle anderen bleiben unverändert): title, beschreibung, projekt (per projektId/projektName), inInboxVerschieben (true = Projekt entfernen), prioritaet, kategorien. Mindestens ein Feld muss angegeben werden. ${GTD_HINWEIS}`,
+      inputSchema: {
+        ...TASK_REF,
+        title: z.string().min(1).optional().describe('Neuer Titel'),
+        beschreibung: z.string().optional().describe('Neue Beschreibung'),
+        ...PROJECT_REF,
+        inInboxVerschieben: z.boolean().optional().describe('true = Task aus seinem Projekt entfernen (landet in der Inbox)'),
+        prioritaet: PRIORITY.optional().describe('low | medium | high'),
+        kategorien: z.array(z.string()).optional().describe('Neue Kategorienamen (ersetzen die bisherigen; müssen existieren)'),
+      },
+    },
+    guard(async ({ taskId, taskNummer, title, beschreibung, projektId, projektName: name, inInboxVerschieben, prioritaet, kategorien }) => {
+      const [tasks, projects, cats] = await Promise.all([api.getTasks(), api.getProjects(), api.getCategories()]);
+      const task = findTask(tasks, { id: taskId, number: taskNummer });
+      const projekt = inInboxVerschieben ? null : projektId || name ? { id: projektId, name } : undefined;
+      const patch = editPatch({ title, beschreibung, projekt, prioritaet, kategorien }, { projects, categories: cats });
+      const updated = await api.patchTask(task.id, patch);
+      const pn = projectName(projects, updated.projectId);
+      return ok(`Geändert: ${formatTaskLine(updated, pn, dateKey(new Date()), api.baseUrl)}`, { task: taskSummary(updated, pn, api.baseUrl) });
+    }),
+  );
+
+  server.registerTool(
+    'task_loeschen',
+    {
+      title: 'Task löschen',
+      description: 'Löscht einen Task endgültig (kann nicht rückgängig gemacht werden). WICHTIG: Frag den Nutzer vor dem Aufruf explizit, ob er wirklich löschen will (welcher Task per Titel/Nummer nennen) — ruf dieses Werkzeug nie ohne diese Bestätigung auf.',
+      inputSchema: { ...TASK_REF },
+    },
+    guard(async ({ taskId, taskNummer }) => {
+      const tasks = await api.getTasks();
+      const task = findTask(tasks, { id: taskId, number: taskNummer });
+      await api.deleteTask(task.id);
+      return ok(`Gelöscht: #${task.number} ${task.title}`, { geloescht: { id: task.id, number: task.number, title: task.title } });
     }),
   );
 }

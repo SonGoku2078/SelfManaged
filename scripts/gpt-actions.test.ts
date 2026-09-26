@@ -1,8 +1,10 @@
-// Proves #98: der HTTP-Layer des gpt-actions-Adapters — Auth-Middleware
-// (Annahme/Ablehnung), Rate-Limit-Schwelle, Routing auf logic.ts-Funktionen.
-// Die reine Logik selbst ist bereits in scripts/mcp.test.ts geprüft (aus
-// apps/mcp/src/logic.ts wiederverwendet); hier nur der neue Transport
-// (HTTP + Auth statt stdio). Kein Netz zum echten Server nötig (Fake-Backend).
+// Proves #98 (+ #100 Task-CRUD-Erweiterung): der HTTP-Layer des
+// gpt-actions-Adapters — Auth-Middleware (Annahme/Ablehnung),
+// Rate-Limit-Schwelle, Routing auf logic.ts-Funktionen, inkl. der neuen
+// PATCH/DELETE /v1/tasks/:ref-Routen aus #100. Die reine Logik selbst ist
+// bereits in scripts/mcp.test.ts geprüft (aus apps/mcp/src/logic.ts
+// wiederverwendet); hier nur der neue Transport (HTTP + Auth statt stdio).
+// Kein Netz zum echten Server nötig (Fake-Backend).
 // Run: npx tsx scripts/gpt-actions.test.ts
 import assert from 'node:assert';
 import type { Server } from 'node:http';
@@ -33,6 +35,11 @@ class FakeApi implements TaskApi {
     if (!t) throw new Error(`Fake-Backend: Task „${id}" nicht gefunden.`);
     Object.assign(t, patch);
     return t;
+  }
+  async deleteTask(id: string) {
+    const i = this.tasks.findIndex((x) => x.id === id);
+    if (i === -1) throw new Error(`Fake-Backend: Task „${id}" nicht gefunden.`);
+    this.tasks.splice(i, 1);
   }
 }
 
@@ -84,10 +91,6 @@ async function main() {
     const rightKey = await call(base, 'GET', '/v1/health', { key: 'geheim-123' });
     assert.equal(rightKey.status, 200, 'richtiger Key -> 200');
 
-    // ── Kein DELETE auf irgendeiner Route registriert (AC-9) ─────────────────
-    const del = await call(base, 'DELETE', '/v1/tasks/1', { key: 'geheim-123' });
-    assert.equal(del.status, 404, 'DELETE ist auf keiner Route registriert (fällt auf 404-Fallback)');
-
     // ── Routing -> logic.ts-Verdrahtung (Wiederverwendung aus apps/mcp) ──────
     const created = await call(base, 'POST', '/v1/tasks', {
       key: 'geheim-123',
@@ -115,6 +118,31 @@ async function main() {
     const unknownTask = await call(base, 'PATCH', '/v1/tasks/%23999/star', { key: 'geheim-123', body: { stern: true } });
     assert.equal(unknownTask.status, 404, 'unbekannte Tasknummer #999 -> 404 (findTask aus logic.ts)');
     assert.match(unknownTask.data.error, /nicht gefunden/);
+
+    // ── #100: PATCH /v1/tasks/:ref (Feld-Update via editPatch) ───────────────
+    const edited = await call(base, 'PATCH', `/v1/tasks/${taskId}`, {
+      key: 'geheim-123',
+      body: { title: 'Geänderter Titel', prioritaet: 'high' },
+    });
+    assert.equal(edited.status, 200);
+    assert.equal(edited.data.task.title, 'Geänderter Titel');
+    assert.equal(edited.data.task.priority, 'high');
+
+    const editedNoFields = await call(base, 'PATCH', `/v1/tasks/${taskId}`, { key: 'geheim-123', body: {} });
+    assert.equal(editedNoFields.status, 400, 'kein Feld angegeben -> 400 (editPatch aus logic.ts)');
+    assert.match(editedNoFields.data.error, /mindestens ein Feld/);
+
+    const editUnknownTask = await call(base, 'PATCH', '/v1/tasks/%23999', { key: 'geheim-123', body: { title: 'x' } });
+    assert.equal(editUnknownTask.status, 404, 'unbekannte Tasknummer -> 404');
+
+    // ── #100: DELETE /v1/tasks/:ref ───────────────────────────────────────────
+    const deleteUnknown = await call(base, 'DELETE', '/v1/tasks/%23999', { key: 'geheim-123' });
+    assert.equal(deleteUnknown.status, 404, 'unbekannter Task -> 404, kein Löschversuch');
+
+    const deleted = await call(base, 'DELETE', `/v1/tasks/${taskId}`, { key: 'geheim-123' });
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.data.geloescht.id, taskId);
+    assert.equal(api.tasks.length, 0, 'Task ist im Fake-Backend wirklich weg');
 
     console.log('Auth + Routing-Verdrahtung: alle Prüfungen bestanden ✔');
   } finally {

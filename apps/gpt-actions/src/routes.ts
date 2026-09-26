@@ -1,8 +1,9 @@
-// Die 12 REST-Routen des ChatGPT-Adapters (#98) — 1:1 auf die MCP-Tools aus
+// Die REST-Routen des ChatGPT-Adapters (#98) — 1:1 auf die MCP-Tools aus
 // #88 gemappt (siehe docs/pipeline/chatgpt-api-access.md, Abschnitt 2
 // "Endpunkt-Mapping"). Verdrahtet api.ts (HTTP-Client) + logic.ts (reine
 // Logik aus apps/mcp, wiederverwendet — keine Duplizierung).
-// Kein Endpunkt ruft DELETE auf; kein Router registriert .delete(...) (AC-9).
+// Seit #100: volles Task-CRUD (PATCH /tasks/:ref, DELETE /tasks/:ref) —
+// Projekte/Kategorien bleiben weiterhin nur lesbar, kein neuer Schreib-Pfad.
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { z, ZodError } from 'zod';
@@ -13,6 +14,7 @@ import {
   completePatch,
   dateKey,
   duePatch,
+  editPatch,
   envKind,
   findTask,
   groupDayPlan,
@@ -272,7 +274,41 @@ export function buildRouter(api: TaskApi): Router {
     }),
   );
 
-  // Kein .delete(...) — bewusst (AC-9). Nicht registrierte Routen fallen auf
-  // den 404-Handler in index.ts.
+  const EditTaskBody = z.object({
+    title: z.string().min(1).optional(),
+    beschreibung: z.string().optional(),
+    projektId: z.string().optional(),
+    projektName: z.string().optional(),
+    inInboxVerschieben: z.boolean().optional(),
+    prioritaet: PRIORITY.optional(),
+    kategorien: z.array(z.string()).optional(),
+  });
+
+  router.patch(
+    '/tasks/:ref',
+    wrap(async (req, res) => {
+      const body = EditTaskBody.parse(req.body ?? {});
+      const [tasks, projects, cats] = await Promise.all([api.getTasks(), api.getProjects(), api.getCategories()]);
+      const task = resolveTaskRef(tasks, req.params.ref);
+      const projekt = body.inInboxVerschieben ? null : body.projektId || body.projektName ? { id: body.projektId, name: body.projektName } : undefined;
+      const patch = editPatch(
+        { title: body.title, beschreibung: body.beschreibung, projekt, prioritaet: body.prioritaet, kategorien: body.kategorien },
+        { projects, categories: cats },
+      );
+      const updated = await api.patchTask(task.id, patch);
+      res.json({ task: taskSummary(updated, projectName(projects, updated.projectId), api.baseUrl) });
+    }),
+  );
+
+  router.delete(
+    '/tasks/:ref',
+    wrap(async (req, res) => {
+      const tasks = await api.getTasks();
+      const task = resolveTaskRef(tasks, req.params.ref);
+      await api.deleteTask(task.id);
+      res.json({ geloescht: { id: task.id, number: task.number, title: task.title } });
+    }),
+  );
+
   return router;
 }

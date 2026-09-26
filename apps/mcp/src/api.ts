@@ -1,5 +1,6 @@
 // Dünner HTTP-Client auf die bestehende REST-API von SelfManaged (#88).
-// Bewusst ohne DELETE — der Adapter darf nichts löschen (AC-17).
+// Seit #100: volles Task-CRUD (deleteTask) — Projekte/Kategorien bleiben
+// weiterhin nur lesbar, kein neuer Schreib-Pfad dafür.
 //
 // Zwei Backends je Umgebungsvariable (Nachtrag 2026-09-26 zu #96/#98):
 // Dev/Express (TM_API_URL) unveraendert seit #88, Prod/Appwrite
@@ -19,12 +20,13 @@ export interface TaskApi {
   getCategories(): Promise<ApiCategory[]>;
   createTask(task: Record<string, unknown>): Promise<ApiTask>;
   patchTask(id: string, patch: Record<string, unknown>): Promise<ApiTask>;
+  deleteTask(id: string): Promise<void>;
 }
 
 export class TaskManagerApi implements TaskApi {
   constructor(readonly baseUrl: string, private readonly timeoutMs = 10_000) {}
 
-  private async request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
@@ -53,6 +55,7 @@ export class TaskManagerApi implements TaskApi {
   patchTask(id: string, patch: Record<string, unknown>) {
     return this.request<ApiTask>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch);
   }
+  deleteTask(id: string) { return this.request<void>('DELETE', `/api/tasks/${encodeURIComponent(id)}`); }
 }
 
 // Appwrite-PROD-Backend: gleiche REST-Pfade, aber ueber die Functions-
@@ -62,7 +65,7 @@ export class TaskManagerApi implements TaskApi {
 export class AppwriteTaskManagerApi implements TaskApi {
   readonly baseUrl = APPWRITE_PROD_SITE_URL;
 
-  private async request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
     try {
       return await appwriteApiFetch<T>(path, {
         method,
@@ -81,4 +84,5 @@ export class AppwriteTaskManagerApi implements TaskApi {
   patchTask(id: string, patch: Record<string, unknown>) {
     return this.request<ApiTask>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch);
   }
+  deleteTask(id: string) { return this.request<void>('DELETE', `/api/tasks/${encodeURIComponent(id)}`); }
 }

@@ -1,6 +1,7 @@
-// Rauchtest (#88, TC-M67): startet den gebauten MCP-Server per stdio, ruft alle
-// 13 Werkzeuge gegen den Server in TM_API_URL auf und prüft die Antworten.
-// NUR gegen Dev ausführen (legt Tasks an und ändert sie):
+// Rauchtest (#88, TC-M67; seit #100 auch task_bearbeiten/task_loeschen):
+// startet den gebauten MCP-Server per stdio, ruft alle Werkzeuge gegen den
+// Server in TM_API_URL auf und prüft die Antworten.
+// NUR gegen Dev ausführen (legt Tasks an, ändert und löscht sie):
 //   TM_API_URL=http://localhost:3002 node apps/mcp/smoke.mjs
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -35,8 +36,8 @@ let failures = 0;
 
 const { tools } = await client.listTools();
 const names = tools.map((t) => t.name).sort();
-step('13 Werkzeuge registriert', names.length === 13, names.join(', '));
-step('kein Lösch-Werkzeug', !names.some((n) => /loesch|delete|entfernen_task/.test(n)));
+step('15 Werkzeuge registriert', names.length === 15, names.join(', '));
+step('task_bearbeiten + task_loeschen registriert', names.includes('task_bearbeiten') && names.includes('task_loeschen'));
 
 const env = await call('umgebung_info');
 step('umgebung_info: dev + erreichbar', !env.isError && env.data.umgebung === 'dev' && env.data.erreichbar === true, env.text);
@@ -102,6 +103,21 @@ step('task_abhaken (Inbox-Task per id)', !doneInbox.isError && doneInbox.data.ta
 
 const bad = await call('task_planen', { taskNummer: 99999999, datum: morgen });
 step('unbekannte Nummer → Fehlertext', bad.isError && /nicht gefunden/.test(bad.text), bad.text);
+
+// ── #100: task_bearbeiten + task_loeschen ────────────────────────────────
+const editTarget = await call('task_anlegen', { title: `MCP-CRUD-Rauchtest ${stamp}` });
+const editNr = editTarget.data.task.number;
+const bearbeitet = await call('task_bearbeiten', { taskNummer: editNr, title: `MCP-CRUD-Rauchtest geändert ${stamp}`, prioritaet: 'low', projektId: projekt.id });
+step('task_bearbeiten: Titel+Prioritaet+Projekt geändert', !bearbeitet.isError && bearbeitet.data.task.title === `MCP-CRUD-Rauchtest geändert ${stamp}` && bearbeitet.data.task.priority === 'low' && bearbeitet.data.task.projectId === projekt.id, bearbeitet.text);
+const bearbeitetInbox = await call('task_bearbeiten', { taskNummer: editNr, inInboxVerschieben: true });
+step('task_bearbeiten: inInboxVerschieben ⇒ projectId null', !bearbeitetInbox.isError && bearbeitetInbox.data.task.projectId === null, bearbeitetInbox.text);
+const bearbeitetLeer = await call('task_bearbeiten', { taskNummer: editNr });
+step('task_bearbeiten ohne Felder → Fehlertext', bearbeitetLeer.isError && /mindestens ein Feld/.test(bearbeitetLeer.text), bearbeitetLeer.text);
+
+const geloescht = await call('task_loeschen', { taskNummer: editNr });
+step('task_loeschen', !geloescht.isError && geloescht.data.geloescht.number === editNr, geloescht.text);
+const nachLoeschen = await call('task_faelligkeit_setzen', { taskNummer: editNr, datum: heute });
+step('gelöschter Task nicht mehr auffindbar', nachLoeschen.isError && /nicht gefunden/.test(nachLoeschen.text), nachLoeschen.text);
 
 await client.close();
 console.log(failures ? `\n${failures} Prüfung(en) FEHLGESCHLAGEN` : '\nRauchtest bestanden ✔');

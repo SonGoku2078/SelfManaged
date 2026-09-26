@@ -24,9 +24,10 @@ Check which version runs where: **Einstellungen → „Version & Umgebung"** (#5
 ## 🤖 KI-Zugriff per MCP (Sprach-Assistent, #88)
 
 Ein eigener **MCP-Server** (`apps/mcp/`) gibt Claude Desktop / Claude Code Werkzeuge auf den
-SelfManaged: Projekte und Tasks lesen, Tagesplan abfragen, Tasks anlegen, für einen Tag planen,
-Fälligkeit setzen, ★ setzen, abhaken. **Kein Löschen, keine Projektverwaltung.** Der Server ist ein
-dünner Adapter auf die bestehende REST-API und braucht keine Server-Änderung.
+SelfManaged: Projekte und Tasks lesen, Tagesplan abfragen, Tasks anlegen, bearbeiten (beliebige
+Felder), löschen, für einen Tag planen, Fälligkeit setzen, ★ setzen, abhaken (#100: volles
+Task-CRUD). **Keine Projekt-/Kategorienverwaltung** — die bleiben weiterhin nur lesbar. Der Server
+ist ein dünner Adapter auf die bestehende REST-API und braucht keine Server-Änderung.
 
 Zwei sich **gegenseitig ausschließende** Betriebsarten, je gesetzter Umgebungsvariable (kein
 Standardwert; ohne eine von beiden startet der Prozess nicht — Nachtrag 2026-09-26, seit dem
@@ -87,8 +88,10 @@ Danach Claude Desktop bzw. Codex neu starten. Sprache: Windows-Diktat (Win+H) in
 Ein zweiter, unabhängiger Adapter (`apps/gpt-actions/`) gibt einem **ChatGPT Custom GPT**
 denselben eingeschränkten Zugriff wie der MCP-Server oben — per REST/HTTP statt stdio, mit
 Bearer-Auth statt lokalem Prozessvertrauen, weil ChatGPT den Server über das Internet erreichen
-muss. **Kein Löschen, keine Projekt-/Kategorienverwaltung.** 12 Routen unter `/v1/*`, beschrieben
-in `apps/gpt-actions/openapi.yaml` (direkt in eine Custom-GPT-Action importierbar).
+muss. Tasks können vollständig verwaltet werden (lesen, anlegen, bearbeiten, löschen, planen,
+Fälligkeit setzen, sternen, abhaken — #100). **Keine Projekt-/Kategorienverwaltung** — die bleiben
+weiterhin nur lesbar. 14 Routen unter `/v1/*`, beschrieben in `apps/gpt-actions/openapi.yaml`
+(direkt in eine Custom-GPT-Action importierbar).
 
 ### 1. API-Key erzeugen
 

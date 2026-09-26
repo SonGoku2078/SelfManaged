@@ -236,6 +236,39 @@ export function completePatch(done: boolean, now = new Date()): Record<string, u
   return done ? { completed: true, completedAt: now.toISOString() } : { completed: false, completedAt: null };
 }
 
+// Beliebiges Feld-Update (#100) — Projekt: null verschiebt explizit in die
+// Inbox, undefined lässt das Feld unverändert. Ohne jedes Feld → LogicError
+// (nichts zu ändern).
+export interface EditableTaskFields {
+  title?: string;
+  beschreibung?: string;
+  projekt?: { id?: string; name?: string } | null;
+  prioritaet?: Priority;
+  kategorien?: string[];
+}
+
+export function editPatch(
+  fields: EditableTaskFields,
+  ctx: { projects: ApiProject[]; categories: ApiCategory[] },
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (fields.title !== undefined) {
+    const title = fields.title.trim();
+    if (!title) throw new LogicError('Der Titel darf nicht leer sein.');
+    patch.title = title;
+  }
+  if (fields.beschreibung !== undefined) patch.description = fields.beschreibung;
+  if (fields.projekt !== undefined) {
+    patch.projectId = fields.projekt === null ? null : resolveProject(ctx.projects, fields.projekt).id;
+  }
+  if (fields.prioritaet !== undefined) patch.priority = fields.prioritaet;
+  if (fields.kategorien !== undefined) patch.categoryIds = resolveCategories(ctx.categories, fields.kategorien);
+  if (Object.keys(patch).length === 0) {
+    throw new LogicError('Bitte mindestens ein Feld zum Ändern angeben (title, beschreibung, projekt, prioritaet, kategorien).');
+  }
+  return patch;
+}
+
 // ── Umgebung & Darstellung ──────────────────────────────────────────────────
 
 export function envKind(url: string): 'dev' | 'prod' | 'unbekannt' {

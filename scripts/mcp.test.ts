@@ -4,7 +4,7 @@
 // Run: npx tsx scripts/mcp.test.ts
 import assert from 'node:assert';
 import {
-  buildNewTask, completePatch, dateKey, dateKeyToIso, envKind, findTask, formatTaskLine,
+  buildNewTask, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
   groupDayPlan, inboxTasks, LogicError, nextSteps, nextTaskNumber, newTaskId, planPatch,
   resolveCategories, resolveProject, searchTasks, tasksOfProject, taskSummary, taskUrl, unplanPatch,
   type ApiProject, type ApiTask,
@@ -74,6 +74,24 @@ const done = completePatch(true, now);
 assert.equal(done.completed, true);
 assert.equal(done.completedAt, now.toISOString());
 assert.deepEqual(completePatch(false), { completed: false, completedAt: null });
+
+// ── Feld-Update-Patch (#100) ──────────────────────────────────────────────
+const editCtx = { projects, categories: cats };
+assert.deepEqual(editPatch({ title: '  Neuer Titel ' }, editCtx), { title: 'Neuer Titel' }, 'Titel getrimmt');
+assert.deepEqual(editPatch({ beschreibung: 'Text' }, editCtx), { description: 'Text' });
+assert.deepEqual(editPatch({ projekt: { name: 'finanzen' } }, editCtx), { projectId: 'p-fin' }, 'Projekt per Name aufgelöst');
+assert.deepEqual(editPatch({ projekt: null }, editCtx), { projectId: null }, 'projekt=null -> Inbox');
+assert.deepEqual(editPatch({ prioritaet: 'high' }, editCtx), { priority: 'high' });
+assert.deepEqual(editPatch({ kategorien: ['büro'] }, editCtx), { categoryIds: ['c1'] });
+assert.deepEqual(
+  editPatch({ title: 'X', prioritaet: 'low' }, editCtx),
+  { title: 'X', priority: 'low' },
+  'mehrere Felder gleichzeitig',
+);
+assert.throws(() => editPatch({}, editCtx), (e: unknown) => e instanceof LogicError && /mindestens ein Feld/.test((e as Error).message), 'leerer Patch -> Fehler');
+assert.throws(() => editPatch({ title: '   ' }, editCtx), /Titel darf nicht leer/);
+assert.throws(() => editPatch({ projekt: { name: 'Gibtsnicht' } }, editCtx), /nicht gefunden/, 'unbekanntes Projekt');
+assert.throws(() => editPatch({ kategorien: ['Auto'] }, editCtx), /Kategorie „Auto" nicht gefunden/);
 
 // ── Tagesplan ─────────────────────────────────────────────────────────────
 const today = '2026-09-14';
