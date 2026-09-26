@@ -1,113 +1,157 @@
-// Appwrite-Variante des API-Clients (#98): ruft dieselbe selfmanaged-api
-// Function auf wie die Web-App, ueber die offizielle Functions-Execution-API
-// — ein direkter fetch() auf die Function-HTTP-Domain funktioniert nicht,
-// Appwrites Edge streicht dabei jeden x-appwrite-*-Header (siehe
-// docs/pipeline/appwrite-prod-test-migration.md). Der MCP-Server laeuft
-// lokal ohne Browser/Cookies, meldet sich deshalb selbst per E-Mail/Passwort
-// an und haelt ein kurzlebiges JWT im Speicher, genau wie AuthGate.tsx es
-// fuer den Browser tut.
-import { Client, Functions, ExecutionMethod } from 'node-appwrite';
-import type { ApiCategory, ApiProject, ApiTask } from './logic.js';
-import { ApiError, type TaskApi } from './api.js';
+// Geteiltes Appwrite-PROD-Backend fuer den MCP-Server (#88) UND den
+// gpt-actions-Adapter (#98) — Nachtrag 2026-09-26 zu #96 (AC10-Luecke:
+// beide zeigten seit dem Appwrite-Cutover weiterhin auf den toten
+// LAN-Server statt auf echte Produktion). Siehe
+// docs/pipeline/appwrite-prod-test-migration.md, Abschnitt "Nachtrag
+// 2026-09-26" fuer die verbindliche Architektur.
+//
+// Nutzt bewusst das oeffentliche Web/Node-SDK "appwrite" (wie
+// src/appwrite/client.ts), NICHT "node-appwrite" (das Admin-SDK mit
+// API-Key) — kein Admin-Key im MCP-/gpt-actions-Prozess (Sicherheitsvorgabe
+// aus Abschnitt 2.5). Der Prozess meldet sich stattdessen per E-Mail/
+// Passwort als normaler Appwrite-Benutzer an (dediziertes Service-Konto,
+// niemals der persoenliche Account des Users) und cached die Session fuer
+// die Prozesslaufzeit.
+//
+// Aufrufe MUESSEN ueber die Functions-Execution-API laufen
+// (functions.createExecution) — ein direkter fetch() auf die Function-
+// HTTP-Domain funktioniert nicht: Appwrites Edge entfernt dabei jeden
+// x-appwrite-*-Header (siehe src/api/client.ts::appwriteApiFetch).
+import { Account, Client, ExecutionMethod, Functions } from 'appwrite';
 
-export interface AppwriteApiConfig {
-  endpoint: string;
-  projectId: string;
-  functionId: string;
-  email: string;
-  password: string;
-  siteUrl: string; // fuer Deep-Links (#/t/<nr>) und envKind() — NICHT die Function-Domain
-  timeoutMs?: number;
+// Oeffentlich, kein Secret (siehe .env.appwrite / src/appwrite/client.ts).
+const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
+const APPWRITE_PROJECT_ID = '6aaa45fb0024f97b2b00';
+const APPWRITE_FUNCTION_ID = 'selfmanaged-api';
+
+// Site-Domain fuer Deep-Links (`#/t/<nummer>`) UND fuer envKind() in
+// logic.ts, das `.appwrite.network`-Hosts bereits als "prod" erkennt —
+// logic.ts bleibt dadurch unveraendert (Nachtrag: "logic.ts kennt keine
+// Transport-Details").
+export const APPWRITE_PROD_SITE_URL = 'https://selfmanaged-prod-6aaa45fb.appwrite.network';
+
+export class AppwriteAuthError extends Error {}
+
+interface AppwriteSession {
+  functions: Functions;
 }
 
-// JWTs laufen bei Appwrite nach 15 Minuten ab; mit Sicherheitsabstand cachen,
-// damit nicht bei jedem Tool-Aufruf neu eingeloggt wird.
-const JWT_TTL_MS = 12 * 60_000;
+let session: AppwriteSession | null = null;
+let loginPromise: Promise<AppwriteSession> | null = null;
 
-export class AppwriteTaskManagerApi implements TaskApi {
-  readonly baseUrl: string;
-  private readonly timeoutMs: number;
-  private jwtCache: { value: string; expiresAt: number } | null = null;
-
-  constructor(private readonly cfg: AppwriteApiConfig) {
-    this.baseUrl = cfg.siteUrl;
-    this.timeoutMs = cfg.timeoutMs ?? 10_000;
+async function login(): Promise<AppwriteSession> {
+  const email = (process.env.APPWRITE_MCP_EMAIL ?? '').trim();
+  const password = process.env.APPWRITE_MCP_PASSWORD ?? '';
+  if (!email || !password) {
+    throw new AppwriteAuthError(
+      'APPWRITE_MCP_EMAIL/APPWRITE_MCP_PASSWORD fehlen — Appwrite-Prod-Login nicht möglich.',
+    );
   }
+  const client = new Client().setEndpoint(APPWRITE_ENDPOINT).setProject(APPWRITE_PROJECT_ID);
+  const account = new Account(client);
+  let createdSession;
+  try {
+    createdSession = await account.createEmailPasswordSession({ email, password });
+  } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
+    throw new AppwriteAuthError(`Appwrite-Login fehlgeschlagen: ${why}`, { cause: e });
+  }
+  client.setSession(createdSession.secret);
+  return { functions: new Functions(client) };
+}
 
-  private async login(): Promise<string> {
-    const endpoint = this.cfg.endpoint.replace(/\/+$/, '');
-    let sessionRes: Response;
-    try {
-      sessionRes = await fetch(`${endpoint}/account/sessions/email`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-appwrite-project': this.cfg.projectId },
-        body: JSON.stringify({ email: this.cfg.email, password: this.cfg.password }),
-        signal: AbortSignal.timeout(this.timeoutMs),
+// Einmaliger Login pro Prozess; parallele erste Aufrufe teilen sich den
+// gleichen Login-Vorgang statt mehrfach anzumelden.
+async function getSession(): Promise<AppwriteSession> {
+  if (session) return session;
+  if (!loginPromise) {
+    loginPromise = login()
+      .then((s) => {
+        session = s;
+        return s;
+      })
+      .catch((e) => {
+        loginPromise = null;
+        throw e;
       });
-    } catch (e) {
-      const why = e instanceof Error ? e.message : String(e);
-      throw new ApiError(`Appwrite unter ${endpoint} nicht erreichbar (${why}).`);
-    }
-    if (!sessionRes.ok) {
-      const text = await sessionRes.text().catch(() => sessionRes.statusText);
-      throw new ApiError(`Appwrite-Login fehlgeschlagen (${sessionRes.status}): ${text}`);
-    }
-    const cookieHeader = sessionRes.headers
-      .getSetCookie()
-      .map((c) => c.split(';')[0])
-      .join('; ');
+  }
+  return loginPromise;
+}
 
-    const jwtRes = await fetch(`${endpoint}/account/jwts`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-appwrite-project': this.cfg.projectId, cookie: cookieHeader },
-      signal: AbortSignal.timeout(this.timeoutMs),
+export interface AppwriteFetchInit {
+  method?: string;
+  body?: string;
+}
+
+// Analog appwriteApiFetch in src/api/client.ts, aber ohne Date-Revival —
+// ApiTask in logic.ts erwartet ohnehin rohe ISO-Strings.
+export async function appwriteApiFetch<T>(path: string, init?: AppwriteFetchInit): Promise<T> {
+  const { functions } = await getSession();
+  const method = (init?.method ?? 'GET').toUpperCase();
+  let execution;
+  try {
+    execution = await functions.createExecution({
+      functionId: APPWRITE_FUNCTION_ID,
+      body: init?.body ?? '',
+      async: false,
+      xpath: path,
+      method: method as ExecutionMethod,
     });
-    if (!jwtRes.ok) {
-      const text = await jwtRes.text().catch(() => jwtRes.statusText);
-      throw new ApiError(`Appwrite-JWT-Erstellung fehlgeschlagen (${jwtRes.status}): ${text}`);
-    }
-    const body = (await jwtRes.json()) as { jwt?: string };
-    if (!body.jwt) throw new ApiError('Appwrite lieferte kein JWT zurueck.');
-    return body.jwt;
+  } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
+    throw new Error(`Appwrite-Function „${APPWRITE_FUNCTION_ID}" nicht erreichbar (${why}).`, { cause: e });
   }
+  if (execution.responseStatusCode >= 400) {
+    throw new Error(
+      `Appwrite antwortete ${execution.responseStatusCode} auf ${method} ${path}: ${execution.responseBody || execution.errors || ''}`,
+    );
+  }
+  if (execution.responseStatusCode === 204 || !execution.responseBody) return undefined as T;
+  return JSON.parse(execution.responseBody) as T;
+}
 
-  private async getJwt(): Promise<string> {
-    if (this.jwtCache && this.jwtCache.expiresAt > Date.now()) return this.jwtCache.value;
-    const jwt = await this.login();
-    this.jwtCache = { value: jwt, expiresAt: Date.now() + JWT_TTL_MS };
-    return jwt;
-  }
+// ── Umgebungs-Umschaltung (Nachtrag 2026-09-26) ─────────────────────────────
+// Zwei sich bewusst ausschliessende Betriebsarten: Dev/Express (TM_API_URL)
+// oder Prod/Appwrite (APPWRITE_MCP_EMAIL + APPWRITE_MCP_PASSWORD). Weder/
+// beides gesetzt ist ein Konfigurationsfehler. Reine Funktion (kein
+// process.exit hier), damit sie ohne echten Prozessstart testbar ist —
+// index.ts entscheidet, wie der Fehler behandelt wird (Exit 1).
+export type TransportMode = { kind: 'express'; baseUrl: string } | { kind: 'appwrite' };
 
-  private async request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
-    const jwt = await this.getJwt();
-    const client = new Client().setEndpoint(this.cfg.endpoint).setProject(this.cfg.projectId).setJWT(jwt);
-    const functions = new Functions(client);
-    let exec;
-    try {
-      exec = await functions.createExecution({
-        functionId: this.cfg.functionId,
-        body: body === undefined ? '' : JSON.stringify(body),
-        async: false,
-        xpath: path,
-        method: method as ExecutionMethod,
-      });
-    } catch (e) {
-      const why = e instanceof Error ? e.message : String(e);
-      throw new ApiError(`Appwrite-Function ${this.cfg.functionId} nicht erreichbar (${why}).`);
-    }
-    if (exec.responseStatusCode >= 400) {
-      throw new ApiError(`Appwrite antwortete ${exec.responseStatusCode} auf ${method} ${path}: ${exec.responseBody || exec.errors || ''}`);
-    }
-    if (exec.responseStatusCode === 204 || !exec.responseBody) return undefined as T;
-    return JSON.parse(exec.responseBody) as T;
-  }
+export class TransportConfigError extends Error {}
 
-  health() { return this.request<{ ok: boolean }>('GET', '/health'); }
-  getTasks() { return this.request<ApiTask[]>('GET', '/api/tasks'); }
-  getProjects() { return this.request<ApiProject[]>('GET', '/api/projects'); }
-  getCategories() { return this.request<ApiCategory[]>('GET', '/api/categories'); }
-  createTask(task: Record<string, unknown>) { return this.request<ApiTask>('POST', '/api/tasks', task); }
-  patchTask(id: string, patch: Record<string, unknown>) {
-    return this.request<ApiTask>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch);
+const BEIDE_OPTIONEN_HINWEIS =
+  'TM_API_URL=http://localhost:3002              (Entwicklung, Express/dev.db)\n' +
+  '  APPWRITE_MCP_EMAIL=… APPWRITE_MCP_PASSWORD=…   (Appwrite-Prod, dediziertes Service-Konto)';
+
+export function resolveTransportMode(env: NodeJS.ProcessEnv = process.env): TransportMode {
+  const tmApiUrl = (env.TM_API_URL ?? '').trim();
+  const email = (env.APPWRITE_MCP_EMAIL ?? '').trim();
+  const password = env.APPWRITE_MCP_PASSWORD ?? '';
+  const hasExpress = tmApiUrl !== '';
+  const hasAppwrite = email !== '' || password !== '';
+
+  if (hasExpress && hasAppwrite) {
+    throw new TransportConfigError(
+      `TM_API_URL und APPWRITE_MCP_EMAIL/-PASSWORD sind gleichzeitig gesetzt — das sind zwei sich ausschließende Betriebsarten. Bitte nur eine davon setzen:\n  ${BEIDE_OPTIONEN_HINWEIS}`,
+    );
   }
+  if (!hasExpress && !hasAppwrite) {
+    throw new TransportConfigError(
+      `Weder TM_API_URL noch APPWRITE_MCP_EMAIL/APPWRITE_MCP_PASSWORD gesetzt. Eine der beiden Betriebsarten muss konfiguriert sein:\n  ${BEIDE_OPTIONEN_HINWEIS}`,
+    );
+  }
+  if (hasAppwrite && (!email || !password)) {
+    throw new TransportConfigError(
+      'APPWRITE_MCP_EMAIL und APPWRITE_MCP_PASSWORD müssen beide gesetzt sein (nur eines gefunden).',
+    );
+  }
+  if (hasExpress) {
+    const baseUrl = tmApiUrl.replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(baseUrl)) {
+      throw new TransportConfigError(`TM_API_URL muss mit http:// oder https:// beginnen (ist: „${baseUrl}").`);
+    }
+    return { kind: 'express', baseUrl };
+  }
+  return { kind: 'appwrite' };
 }

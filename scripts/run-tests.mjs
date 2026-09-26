@@ -20,6 +20,7 @@ const AUTO_CASES = [
   { id: 'TC-A08', cmd: 'npx tsx scripts/pomodoro.test.ts' },
   { id: 'TC-A09', cmd: 'npx tsx scripts/evernote.test.ts' },
   { id: 'TC-A11', cmd: 'npx tsx scripts/mcp.test.ts' },
+  { id: 'TC-A12', cmd: 'npx tsx scripts/gpt-actions.test.ts' },
   { id: 'TC-A04', cmd: 'npm run build', build: true },
   { id: 'TC-A05', cmd: 'npm run build:mobile', build: true },
 ];

@@ -28,13 +28,14 @@ SelfManaged: Projekte und Tasks lesen, Tagesplan abfragen, Tasks anlegen, für e
 Fälligkeit setzen, ★ setzen, abhaken. **Kein Löschen, keine Projektverwaltung.** Der Server ist ein
 dünner Adapter auf die bestehende REST-API und braucht keine Server-Änderung.
 
-Die Ziel-Adresse kommt **ausschließlich** aus `TM_API_URL` (kein Standardwert; ohne Variable startet
-der Prozess nicht):
+Zwei sich **gegenseitig ausschließende** Betriebsarten, je gesetzter Umgebungsvariable (kein
+Standardwert; ohne eine von beiden startet der Prozess nicht — Nachtrag 2026-09-26, seit dem
+Appwrite-Prod-Cutover #97):
 
-| Umgebung | `TM_API_URL` |
+| Umgebung | Variable(n) |
 |---|---|
-| Dev (Tests, Claude Code via `.mcp.json`) | `http://localhost:3002` |
-| Prod (Alltag, Claude Desktop) | `http://192.168.8.187:3001` |
+| Dev (Tests, Claude Code via `.mcp.json`) | `TM_API_URL=http://localhost:3002` |
+| Prod (Alltag, Claude Desktop/Codex) | `APPWRITE_MCP_EMAIL=…` + `APPWRITE_MCP_PASSWORD=…` |
 
 ```bash
 npm run build:mcp                 # baut apps/mcp/dist (Teil von npm run build)
@@ -43,21 +44,114 @@ npm run mcp:dev                   # startet den Server gegen Dev (stdio; zum Deb
 
 **Claude Code:** `.mcp.json` im Repo registriert den Server automatisch gegen Dev (`npm run dev:server` muss laufen).
 
+**Prod braucht ein dediziertes Appwrite-Benutzerkonto:** Seit dem Appwrite-Cutover (#97) läuft
+PROD nicht mehr über einen LAN-Server, sondern über die `selfmanaged-api`-Function im Appwrite-
+Projekt. Der MCP-/gpt-actions-Prozess meldet sich dafür selbst per E-Mail/Passwort an — **nicht**
+mit einem Admin-API-Key, damit kein KI-Tool je einen Admin-Zugriff sieht. Der User legt dieses
+Konto **einmalig manuell** an: Appwrite-Konsole → **Auth → Users → Create user** (eigene
+E-Mail-Adresse + generiertes Passwort reichen; das Konto braucht keine Sonderrolle, die
+Appwrite-Tabellenberechtigungen greifen automatisch für jeden angemeldeten Nutzer). Dieses
+Credential wird **nie** von einem KI-Tool erzeugt oder gelesen — es wird ausschließlich vom
+User in der jeweiligen Client-Konfiguration (Claude Desktop, Codex) eingetragen.
+
 **Claude Desktop (Prod):** in `%APPDATA%\Claude\claude_desktop_config.json` eintragen (Pfad anpassen):
 ```json
 {
   "mcpServers": {
-    "selfmanaged": {
+    "selfmanaged-prod": {
       "command": "node",
       "args": ["C:\\Pfad\\zum\\Repo\\apps\\mcp\\dist\\index.js"],
-      "env": { "TM_API_URL": "http://192.168.8.187:3001" }
+      "env": {
+        "APPWRITE_MCP_EMAIL": "…",
+        "APPWRITE_MCP_PASSWORD": "…"
+      }
     }
   }
 }
 ```
-Danach Claude Desktop neu starten. Sprache: Windows-Diktat (Win+H) ins Eingabefeld. Beispiele:
+
+**Codex CLI (Prod):** in `~/.codex/config.toml` analog eintragen (Pfad anpassen):
+```toml
+[mcp_servers.selfmanaged-prod]
+command = "node"
+args = ["/pfad/zum/repo/apps/mcp/dist/index.js"]
+env = { APPWRITE_MCP_EMAIL = "…", APPWRITE_MCP_PASSWORD = "…" }
+```
+
+Danach Claude Desktop bzw. Codex neu starten. Sprache: Windows-Diktat (Win+H) ins Eingabefeld. Beispiele:
 „Was ist mein Plan für heute?", „Welche nächsten Schritte hat Projekt X?", „Leg einen Task … im Projekt … an",
 „Lass uns den Plan für morgen definieren".
+
+## 🤖 ChatGPT-Zugriff per Custom GPT Actions (#98)
+
+Ein zweiter, unabhängiger Adapter (`apps/gpt-actions/`) gibt einem **ChatGPT Custom GPT**
+denselben eingeschränkten Zugriff wie der MCP-Server oben — per REST/HTTP statt stdio, mit
+Bearer-Auth statt lokalem Prozessvertrauen, weil ChatGPT den Server über das Internet erreichen
+muss. **Kein Löschen, keine Projekt-/Kategorienverwaltung.** 12 Routen unter `/v1/*`, beschrieben
+in `apps/gpt-actions/openapi.yaml` (direkt in eine Custom-GPT-Action importierbar).
+
+### 1. API-Key erzeugen
+
+```bash
+openssl rand -hex 32
+```
+
+Ergebnis als `GPT_ACTIONS_API_KEY` setzen (Umgebungsvariable auf dem Host, der `apps/gpt-actions`
+betreibt, **kein** Hardcoding, **kein** Standardwert — ohne die Variable startet der Prozess
+nicht, analog zu den Backend-Variablen unten).
+
+Backend-Anbindung: dieselben zwei sich ausschließenden Betriebsarten wie beim MCP-Server oben
+(Nachtrag 2026-09-26, seit dem Appwrite-Prod-Cutover #97):
+
+| Umgebung | Backend-Variable(n) | `GPT_ACTIONS_API_KEY` | `GPT_ACTIONS_PORT` |
+|---|---|---|---|
+| Dev (Tests, `npm run gpt-actions:dev`) | `TM_API_URL=http://localhost:3002` | Platzhalter im Script | 3003 (Default) |
+| Prod (ChatGPT) | `APPWRITE_MCP_EMAIL=…` + `APPWRITE_MCP_PASSWORD=…` | dein per `openssl` erzeugter Key | 3003 (Default) |
+
+Für Prod gilt dasselbe dedizierte Appwrite-Benutzerkonto wie beim MCP-Server (siehe oben,
+Abschnitt „Prod braucht ein dediziertes Appwrite-Benutzerkonto") — **ein** einmalig manuell
+angelegtes Konto reicht für beide Adapter (MCP + gpt-actions), da beide nur lesen/anlegen/planen/
+sternen/abhaken dürfen und dieselben Appwrite-Tabellenberechtigungen greifen.
+
+```bash
+npm run build:gpt-actions          # baut apps/gpt-actions/dist (Teil von npm run build)
+npm run gpt-actions:dev            # startet den Server gegen Dev (zum Debuggen, Platzhalter-Key)
+```
+
+### 2. Cloudflare Tunnel einrichten (Prod, `selfmanaged-prod`)
+
+`apps/gpt-actions` selbst spricht nur HTTP im LAN — ein `cloudflared`-Tunnel macht ihn öffentlich
+per HTTPS erreichbar, ohne einen Router-Port zu öffnen (TLS übernimmt Cloudflare). Keine Secrets
+im Repo — die Tunnel-Konfiguration bleibt lokal auf dem Prod-Host.
+
+1. `cloudflared` auf `selfmanaged-prod` installieren (siehe Cloudflare-Doku für die Plattform).
+2. Bei Cloudflare anmelden: `cloudflared tunnel login`.
+3. Named Tunnel anlegen: `cloudflared tunnel create selfmanaged-gpt-actions` (erzeugt eine
+   Credentials-Datei, **nicht committen**).
+4. Lokale Config anlegen (z. B. `~/.cloudflared/config.yml`, **nicht** im Repo):
+   ```yaml
+   tunnel: selfmanaged-gpt-actions
+   credentials-file: /pfad/zu/<tunnel-id>.json
+   ingress:
+     - hostname: gpt.deine-domain.example
+       service: http://localhost:3003
+     - service: http_status:404
+   ```
+5. DNS-Route setzen: `cloudflared tunnel route dns selfmanaged-gpt-actions gpt.deine-domain.example`.
+6. Tunnel + `apps/gpt-actions` als Dienste dauerhaft laufen lassen (z. B. `cloudflared service
+   install` bzw. `systemd`/Docker, je nach Setup von `selfmanaged-prod`), mit `TM_API_URL` und
+   `GPT_ACTIONS_API_KEY` als Umgebungsvariablen für den Node-Prozess.
+
+### 3. Custom GPT in ChatGPT einrichten
+
+1. ChatGPT → **Create a GPT** → **Configure** → **Actions** → **Create new action**.
+2. **Import from URL** oder Inhalt von `apps/gpt-actions/openapi.yaml` einfügen (`servers.url` auf
+   deine Tunnel-Domain anpassen, z. B. `https://gpt.deine-domain.example`).
+3. **Authentication** → **API Key** → **Auth Type: Bearer** → den in Schritt 1 erzeugten
+   `GPT_ACTIONS_API_KEY` eintragen.
+4. Speichern, testen: „Was ist mein Plan für heute?", „Leg einen Task … im Projekt … an",
+   „Markiere Task #142 als Nächste Aktion" — dieselben Beispiele wie beim MCP-Server, nur über
+   ChatGPT statt Claude.
 
 ### CI / Releases (GitHub)
 - **CI** (`.github/workflows/ci.yml`): every push/PR builds + typechecks the app — a gate that

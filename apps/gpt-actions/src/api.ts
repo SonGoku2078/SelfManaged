@@ -1,13 +1,15 @@
-// Dünner HTTP-Client auf die bestehende REST-API von SelfManaged (#88).
-// Bewusst ohne DELETE — der Adapter darf nichts löschen (AC-17).
+// Dünner HTTP-Client auf die bestehende REST-API von SelfManaged (#98).
+// Eigene Kopie analog apps/mcp/src/api.ts (bewusst, siehe Architektur-Trade-off
+// "Eigener Prozess statt Erweiterung von apps/mcp" — process-lokal, kein
+// npm-Workspace-Umbau). Bewusst ohne DELETE — der Adapter darf nichts löschen (AC-9).
 //
 // Zwei Backends je Umgebungsvariable (Nachtrag 2026-09-26 zu #96/#98):
-// Dev/Express (TM_API_URL) unveraendert seit #88, Prod/Appwrite
-// (APPWRITE_MCP_EMAIL/-PASSWORD) neu ueber das geteilte Modul
-// appwriteApi.ts. tools.ts kennt nur das TaskApi-Interface, nicht welches
-// Backend dahintersteckt.
-import type { ApiCategory, ApiProject, ApiTask } from './logic.js';
-import { APPWRITE_PROD_SITE_URL, appwriteApiFetch } from './appwriteApi.js';
+// Dev/Express (TM_API_URL) unveraendert, Prod/Appwrite (APPWRITE_MCP_EMAIL/
+// -PASSWORD) ueber das mit apps/mcp geteilte Modul appwriteApi.ts (analog zur
+// bestehenden Wiederverwendung von logic.ts) — keine zweite Appwrite-Auth-
+// Implementierung.
+import type { ApiCategory, ApiProject, ApiTask } from '../../mcp/src/logic.js';
+import { APPWRITE_PROD_SITE_URL, appwriteApiFetch } from '../../mcp/src/appwriteApi.js';
 
 export class ApiError extends Error {}
 
@@ -55,10 +57,10 @@ export class TaskManagerApi implements TaskApi {
   }
 }
 
-// Appwrite-PROD-Backend: gleiche REST-Pfade, aber ueber die Functions-
-// Execution-API statt fetch() (siehe appwriteApi.ts). `baseUrl` ist die
-// Appwrite-Site-Domain (fuer Deep-Links und envKind()-Erkennung „prod"),
-// nicht die Function-Domain.
+// Appwrite-PROD-Backend, eigene Kopie analog TaskManagerApi oben (bewusst,
+// siehe Trade-off "Eigener Prozess") — nutzt aber den geteilten
+// appwriteApiFetch aus apps/mcp/src/appwriteApi.ts, keine zweite
+// Login-/Execution-Implementierung.
 export class AppwriteTaskManagerApi implements TaskApi {
   readonly baseUrl = APPWRITE_PROD_SITE_URL;
 

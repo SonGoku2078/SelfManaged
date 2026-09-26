@@ -1518,6 +1518,38 @@
           "bemerkung": "Rauchtest smoke.mjs 25/25 + Ad-hoc 23/23 gegen Dev (dev.db): 13 Tools, kein Lösch-Tool, Pflicht-Variable (fehlt/leer/ohne http → Exit 1), Server aus → Fehlertext ohne Absturz, mehrdeutiges Projekt → Kandidaten, Kategorie unbekannt → Fehler, planenFuer ⇒ ★, Tagesplan-Gruppen, abhaken/rückgängig, Wiederholungs-Hinweis. Offen: Dialoge in Claude Code + Claude-Desktop-Einrichtung (User)."
         }
       ]
+    },
+    {
+      "id": "TC-A12",
+      "bereich": "Auto-Tests",
+      "titel": "gpt-actions HTTP-Layer: Auth-Middleware, Rate-Limit-Schwelle, Routing auf logic.ts (#98)",
+      "erwartung": "requireApiKey lehnt fehlenden/falschen Bearer-Key mit 401 ab, akzeptiert den korrekten; kein DELETE auf irgendeiner Route registriert (404-Fallback); POST /v1/tasks + PATCH .../plan verdrahten korrekt auf buildNewTask/planPatch/unplanPatch aus apps/mcp/src/logic.ts (Planen-Invariante ⇒ ★); unbekanntes Projekt/Task → 404; ungültiger Body → 400; Rate-Limiter blockt ab dem konfigurierten Schwellwert mit 429.",
+      "typ": "auto",
+      "quelle": "scripts/gpt-actions.test.ts",
+      "regression": true,
+      "laeufe": [
+        {
+          "datum": "2026-09-24",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        }
+      ]
+    },
+    {
+      "id": "TC-M68",
+      "bereich": "Runde 8",
+      "titel": "#98 ChatGPT-Zugriff: 12 REST-Routen gegen Dev-Server (HTTP+Bearer-Auth), Pflicht-Variablen, kein Löschen",
+      "erwartung": "Ohne TM_API_URL bzw. GPT_ACTIONS_API_KEY bricht der Start mit Exit 1 und deutscher Meldung ab. Mit Dev-URL: /v1/health meldet dev+erreichbar; /v1/projects, /v1/projects/:ref/tasks, /v1/projects/:ref/next-steps, /v1/day-plan, /v1/inbox, /v1/tasks/search liefern korrekte Daten; POST /v1/tasks vergibt max+1, landet im Projekt bzw. der Inbox; PATCH .../plan setzt todayDate+★ bzw. entfernt (★ bleibt); .../due-date, .../star, .../complete patchen korrekt; unbekanntes Projekt/Task → 404; ungültiger Body → 400; kein DELETE registriert (Smoke-Probe auf mehreren Routen → 404).",
+      "typ": "manuell",
+      "quelle": "docs/pipeline/chatgpt-api-access.md",
+      "regression": true,
+      "laeufe": [
+        {
+          "datum": "2026-09-24",
+          "ergebnis": "pass",
+          "bemerkung": "Rauchtest apps/gpt-actions/smoke.mjs 22/22 gegen Dev (dev.db): Auth (ohne/falsch/richtig Key), kein DELETE, alle 12 Routen inkl. Task-Referenz per id/Nummer/#Nummer, Planen-Invariante, Tagesplan-Gruppen, Suche, abhaken, Fehlertexte (404/400). Offen: Anwender-Nachweis in einem echten Custom GPT (User, AC-13) — Voraussetzung ist ein aktiver Cloudflare Tunnel."
+        }
+      ]
     }
   ]
 }
