@@ -53,3 +53,16 @@
 .has-prod-logout .panel-header-actions {
   margin-right: 90px;
 }
+
+/* Gleiche Ursache wie oben: der fixe Abmelden-Button ueberlappt sonst auch
+   die rechte Button-Reihe der Haupt-Kopfzeile (Refresh/Pomodoro/Stats-Pille,
+   .task-header-right in App.tsx). Nur im PROD-Login-Modus nach links
+   versetzen, damit ihr rechtes Ende auf Hoehe der linken Kante des
+   "Hinzufuegen"-Buttons (Quick-Add-Zeile darunter) endet. Der Abstand ist
+   breitenunabhaengig: .quick-add-input waechst mit flex:1, der
+   Hinzufuegen-Button daneben behaelt aber immer seine Inhaltsbreite -
+   deshalb funktioniert ein fixer margin-right hier stabil bei jeder
+   Fensterbreite, wie beim Detail-Panel-Fix oben. */
+.has-prod-logout .task-header-right {
+  margin-right: 110px;
+}
