@@ -3,7 +3,7 @@
 **Projekt:** SelfManaged (Nozbe Clone, HTML MVP)  
 **Repository:** https://github.com/SonGoku2078/SelfManaged  
 **Status:** ✅ Tier-1 Core Features COMPLETE (14/14) — MVP funktionsfähig  
-**Last Updated:** 2026-09-18
+**Last Updated:** 2026-09-29
 
 ---
 
@@ -19,6 +19,8 @@ Alle neuen Feature-Ideen, Requests, Bugs — unpriorisiert.
 - [ ] **Mobile Gestures** — Swipe to delete, long-press menus (Touch Devices) — *zurückgestellt: braucht Touch-Hardware zum Verifizieren*
 - [x] **Sprachsteuerung zur Task-Erfassung (Mikrofon-Button)** — Diktier-Button in der App (Web + perspektivisch Handy), Speech-to-Text + KI-Interpretation legt Task an; landet je nach gesprochenem Inhalt in Inbox oder direkt in einem Projekt. Ziel: Idee → Button → Diktat → Task ist erledigt, ohne Tippen oder manuelle Ablage-Entscheidung. → triagiert, siehe Backlog TIER-4.
 - [x] **ChatGPT-Zugriff auf SelfManaged (Custom GPT Actions)** — User will Tasks nicht nur über Claude (MCP, #88), sondern auch über ChatGPT lesen/anlegen/planen/abhaken/sternen können. Verwandt mit dem 2026-09-14 als "nicht geplant" geschlossenen #89 (damals: Handy-Zugriff war nie Ziel) — heute expliziter neuer Wunsch mit anderem Ziel (ChatGPT statt Handy). User-Entscheidungen 2026-09-24 bindend: Custom GPT Actions (REST/OpenAPI, kein Remote-MCP), Server muss internet-erreichbar sein (Tunnel/Reverse-Proxy + TLS), neues Issue statt #89-Reaktivierung. → triagiert, siehe Eintrag „In Bearbeitung".
+- [x] **Web/PROD: Kopfzeile überlappt mit fixem Abmelden-Button** — User meldet (Screenshot Desktop-Web, PROD/Appwrite-Login aktiv, 2026-09-29): In der Kopfzeile jeder Ansicht (Beispiel "Next Week") ragt die rechte Button-Reihe (Refresh-Icon, Pomodoro-Widget, Stats-Pille) bis unter/hinter den fix positionierten "Abmelden"-Button. Gewünscht: Die gesamte rechte Kopfzeilen-Reihe so weit nach links verschieben, dass ihr rechtestes Element auf Höhe der linken Kante des "Hinzufügen"-Buttons (Zeile darunter) endet — analog zum bereits bestehenden Fix für das Task-Detail-Panel (`src/components/AuthGate.css` Zeile 47-55, `.has-prod-logout .panel-header-actions { margin-right: 90px }`), der aber nur das Detail-Panel abdeckt, nicht die Haupt-Kopfzeile (`.task-header-right` in `src/App.tsx` Zeile 543ff). → triagiert, siehe Backlog TIER-1/Bugfix.
+- [x] **Mobile: Tages-Übersicht-Benachrichtigung ohne Taskname & ohne Tap-Deeplink** — User meldet (Screenshot Android, 2026-09-29): Die tägliche 08:00-Sammel-Benachrichtigung ("SelfManaged" / "1 Aufgabe heute fällig") nennt den Tasknamen nicht und springt beim Antippen nicht in den Task. Ursache lokalisiert in `apps/mobile/src/notifications.ts` Zeile 125-133 (`SUMMARY_ID`-Notification): Body ist generischer Zähltext, kein `extra.taskId` gesetzt — im Unterschied zu den Einzel-Reminder-Notifications direkt darüber (Zeile 108-123), die bereits Tasknamen im Titel und `extra: { taskId }` fürs Deep-Linking haben (Tap-Handler existiert schon: `onReminderTap()`). Gewünschtes Verhalten: Bei genau 1 fälligem Task steht dessen Name in der Benachrichtigung; Antippen öffnet die App direkt im Task. → triagiert, siehe Backlog TIER-4.
 
 ---
 
@@ -46,6 +48,9 @@ Triagiert, gruppiert nach Tier.
 - [x] **[TIER-1] Keyboard Shortcuts** — Basic navigation (Enter, Escape, Tab)
 - [x] **[TIER-1] Nozbe-Exact UI** — Design 1:1 match with official Nozbe
 
+**Bugfix (regressionsartig, HIGH — betrifft alle Ansichten im PROD-Web-Modus):**
+- [ ] **[TIER-1] HIGH — Kopfzeile überlappt mit fixem Abmelden-Button (PROD/Web)** — Rechte Button-Reihe der Haupt-Kopfzeile (`.task-header-right`: Refresh, Pomodoro, Stats-Pille) läuft im PROD-Login-Modus unter den fix positionierten Abmelden-Button. Analog zum bestehenden `.has-prod-logout .panel-header-actions`-Fix im Task-Detail-Panel zu lösen, aber für die Haupt-Kopfzeile. Zielvorgabe User: rechtestes Element der Reihe endet linksbündig auf Höhe des "Hinzufügen"-Buttons.
+
 ### TIER-2-MANAGEMENT (Important, Post-MVP)
 
 - [x] **[TIER-2] Project Templates** — Pre-built project structures
@@ -71,6 +76,7 @@ Triagiert, gruppiert nach Tier.
 - [ ] **[TIER-4] Mobile App** — Electron/React Native version — *zurückgestellt: separater Build-Target/Epic, kein HTML-MVP-Scope*
 - [x] **[TIER-4] HIGH — App-Logo & Icons** — Eigenes Branding (Haken auf Grün) für Browser-Tab, Android-Launcher/Themed/Splash, Electron. Design final vom User bestätigt → direkt in Req-Eng.
 - [ ] **[TIER-4] HIGH — Sprachsteuerung zur Task-Erfassung (Mikrofon-Button)** — Mikrofon-Button in der UI (Web zuerst, Handy später) startet Diktat; Speech-to-Text-Transkript geht an die KI, die daraus Titel/Details extrahiert und den Task per bestehender Task-Anlage-Logik erstellt. KI erkennt aus dem Gesagten, ob ein Projektbezug genannt wurde (→ Task landet direkt im Projekt) oder nicht (→ Inbox, wie bisheriger Default). Kernanforderung User: max. Schnelligkeit/Reibungslosigkeit, keine manuelle Nacharbeit nötig. Ergänzt den bestehenden MCP-Sprach-Assistenten (#88, Claude Desktop/Code) um einen In-App-Weg ohne externes Tool; thematisch verwandt mit #90 (Sprachausgabe/Jarvis, aber das ist Output statt Input).
+- [ ] **[TIER-4] HIGH — Mobile: Tages-Übersicht-Benachrichtigung mit Taskname & Tap-Deeplink** — Bug-Fix an bestehendem Reminder-Feature (#30-Umfeld, aber eigenständig): Sammel-Notification um 08:00 Uhr nennt bei 1 fälligem Task dessen Namen statt nur "1 Aufgabe heute fällig", und Antippen springt in die App direkt in den Task (analog zu den bereits funktionierenden Einzel-Reminder-Notifications). Reine Konsistenzkorrektur einer bestehenden Mobile-Funktion, kein neues Feature.
 
 ---
 
@@ -83,6 +89,8 @@ Features gebrieft, beim Requirements Engineer in Arbeit.
 | — | Alle Tier-1-Features abgeschlossen | done | docs/pipeline/* | — |
 | #88 | **MCP-Server: Sprach-Assistent (Claude Desktop/Code)** — lesen/planen/anlegen/abhaken, kein Löschen (#89 Handy: nicht geplant, geschlossen) | done (PR #91 gemergt 2026-09-14) | [#88](https://github.com/SonGoku2078/Task-Manager/issues/88) · docs/pipeline/mcp-server.md | User: Claude Desktop einrichten |
 | #98 | **ChatGPT-Zugriff auf SelfManaged (Custom GPT Actions)** — REST-API mit Auth, internet-erreichbar (Tunnel/TLS), gleicher Rechte-Scope wie #88 | blocked (Gate GO, PR offen — wartet auf User: Merge-Freigabe + Cloudflare-Tunnel/Key/ChatGPT-Setup) | [#98](https://github.com/SonGoku2078/SelfManaged/issues/98) · [PR #99](https://github.com/SonGoku2078/SelfManaged/pull/99) · docs/pipeline/chatgpt-api-access.md | User: PR reviewen, mergen, Tunnel+Key+Custom-GPT einrichten |
+| #102 | **Mobile: Tages-Übersicht-Notification — Taskname + Tap-Deeplink** — Bug-Fix `apps/mobile/src/notifications.ts` SUMMARY_ID-Notification | blocked (Gate GO, PR offen — wartet auf User: Merge-Freigabe, danach neuer Mobile-Build/APK + Geräte-Test) | [#102](https://github.com/SonGoku2078/SelfManaged/issues/102) · [PR #104](https://github.com/SonGoku2078/SelfManaged/pull/104) · docs/pipeline/mobile-notification-deeplink.md | User: PR reviewen, mergen, Mobile-Build + Geräte-Test |
+| #103 | **Web/PROD: Kopfzeile überlappt mit fixem Abmelden-Button** — CSS-Fix `src/components/AuthGate.css` (`.has-prod-logout .task-header-right`) | blocked (Gate GO, PR offen — wartet auf User: Merge-Freigabe + visuelle Pixel-Prüfung des 110px-Werts) | [#103](https://github.com/SonGoku2078/SelfManaged/issues/103) · [PR #105](https://github.com/SonGoku2078/SelfManaged/pull/105) · docs/pipeline/prod-header-logout-overlap.md | User: PR reviewen, visuell prüfen, mergen, deployen |
 | 015 | App-Logo & Icons (SelfManaged) | COMPLETED (PR #50, 2026-07-16) | [#49](https://github.com/SonGoku2078/Task-Manager/issues/49) | — |
 
 ### Briefing → /req-engineer: ChatGPT-Zugriff auf SelfManaged (Custom GPT Actions)
@@ -100,6 +108,18 @@ Features gebrieft, beim Requirements Engineer in Arbeit.
 - **Definition of Done (PM-Sicht):** Auth-geschützte HTTPS-API ist von außen erreichbar, OpenAPI-Schema für Custom GPT Actions vorhanden, gleicher funktionaler Umfang wie MCP #88 (minus Löschen/Verwaltung), User hat ChatGPT erfolgreich getestet.
 - **History:**
   - 2026-09-24: Aus User-Anfrage inkl. Grill-me/Klärung triagiert (Custom GPT Actions, Internet-erreichbar, neues Issue) → direkt gebrieft an /req-engineer.
+
+### Briefing → /req-engineer: Mobile — Tages-Übersicht-Notification mit Taskname & Tap-Deeplink
+- **Kontext / Warum:** User meldet per Screenshot (Android-Notification-Shade, 29.09.2026 20:55): Die tägliche 08:00-Sammel-Benachrichtigung zeigt nur "SelfManaged" / "1 Aufgabe heute fällig" — kein Taskname, kein Tap-Verhalten. Das ist eine Inkonsistenz innerhalb einer bereits existierenden, funktionierenden Funktion: Die Einzel-Reminder-Notifications (vor Task-Startzeit) zeigen den Tasknamen im Titel UND springen beim Antippen bereits korrekt in den Task (Tap-Handler `onReminderTap()` existiert und ist verdrahtet). Nur die separate Sammel-Notification um 08:00 wurde ohne diese beiden Eigenschaften gebaut.
+- **Lokalisierung (zur Orientierung, keine fertige Spec):** `apps/mobile/src/notifications.ts`, Funktion `scheduleReminders()`. Einzel-Reminder mit korrektem Verhalten: Zeile ~108–123 (`title: ⏰ ${t.title}`, `extra: { taskId: t.id }`). Fehlerhafte Sammel-Notification: Zeile ~125–133 (`SUMMARY_ID`, generischer `body`-Zähltext, kein `extra`).
+- **Nozbe-Referenz:** N/A — eigenständiges Mobile-Notification-Feature (kein Nozbe-UI-Element), thematisch im Umfeld von Issue #30 (Reminder-Vorschau/Widget), aber kleinerer, eigenständiger Scope — nicht mit #30 vermischen.
+- **Ziel / Output:** Wenn genau 1 Task heute fällig ist, zeigt die 08:00-Notification dessen Tasknamen (statt "1 Aufgabe heute fällig") und öffnet beim Antippen die App direkt im betroffenen Task — analog zum bestehenden Verhalten der Einzel-Reminder. Bei mehreren fälligen Tasks: Req-Engineer/Architekt entscheiden sinnvolles Verhalten (z. B. weiterhin Zähltext, da kein einzelner Task eindeutig ist — Tap könnte z. B. in die Tagesansicht statt in einen Task springen); das ist zu spezifizieren, nicht vom PM vorgegeben.
+- **Scope-Hinweise:** In-Scope: Bugfix an `notifications.ts` (Body-Text + `extra.taskId` bei genau 1 fälligem Task). Out-of-Scope: Widgets, Reminder-Vorschau-Erweiterungen (das ist #30, separates größeres Feature).
+- **Acceptance Criteria (grob):** Als User mit genau 1 heute fälligem Task sehe ich um 08:00 eine Benachrichtigung mit dem Namen dieses Tasks; tippe ich darauf, öffnet sich SelfManaged direkt im Task (nicht nur die App allgemein).
+- **Constraints:** HTML-MVP-Grundsatz gilt hier nicht 1:1 (Mobile/Capacitor-App), aber: keine neuen Dependencies, bestehenden `onReminderTap`-Mechanismus wiederverwenden statt neu bauen.
+- **Definition of Done (PM-Sicht):** Verhalten auf echtem Android-Gerät verifiziert (Notification zeigt Taskname, Tap springt in Task) — User selbst bestätigt, da Touch-Hardware zum Verifizieren nötig ist (vgl. bereits zurückgestelltes Item "Mobile Gestures" in der Inbox).
+- **History:**
+  - 2026-09-29: Aus User-Bugmeldung (Screenshot) triagiert und direkt gebrieft an /req-engineer.
 
 ### Briefing → /req-engineer: App-Logo & Icons (SelfManaged)
 - **Kontext / Warum:** App läuft mit Platzhalter-Branding (Bolt-Favicon im Tab, Capacitor-Standard-Icon/-Splash auf Android, Electron-Default-Icon). Eigenes Logo schafft Wiedererkennung auf allen drei Plattformen.
