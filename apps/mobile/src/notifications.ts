@@ -122,13 +122,20 @@ export async function scheduleReminders(tasks: Task[], prefs: ReminderPrefs): Pr
       });
     }
 
+    // Bei genau 1 fälligem Task Namen zeigen + Tap-Deeplink (extra.taskId, via
+    // onReminderTap) wie bei den Einzel-Remindern oben. Bei 0/>1 Tasks bleibt
+    // der Zähltext ohne Deeplink, weil dort kein Task eindeutig zuordenbar ist.
+    const single = dueToday.length === 1 ? dueToday[0] : null;
     notifications.push({
       id: SUMMARY_ID,
-      title: '📋 SelfManaged',
-      body: dueToday.length
-        ? `${dueToday.length} Aufgabe${dueToday.length === 1 ? '' : 'n'} heute fällig`
-        : 'Heute keine fälligen Aufgaben 🎉',
+      title: single ? `📋 ${single.title}` : '📋 SelfManaged',
+      body: single
+        ? 'Heute fällig — antippen für Details'
+        : dueToday.length
+          ? `${dueToday.length} Aufgaben heute fällig`
+          : 'Heute keine fälligen Aufgaben 🎉',
       channelId,
+      ...(single ? { extra: { taskId: single.id } } : {}),
       schedule: { on: { hour: 8, minute: 0 }, allowWhileIdle: true },
     });
 
