@@ -32,7 +32,7 @@ import {
   tasksApi, projectsApi, categoriesApi, membersApi,
   sectionsApi, blockersApi, savedViewsApi, activityLogApi, settingsApi,
 } from './api';
-import { enqueue, flush as flushOutbox } from './api/outbox';
+import { enqueue, flush as flushOutbox, pendingCount, writeSeq } from './api/outbox';
 import { saveSnapshot, loadSnapshot } from './api/cache';
 import { buildOccurrence } from './recurrence';
 import { orderSections } from './selectors';
@@ -855,6 +855,8 @@ export const useStore = create<AppState>()((set, get) => ({
       }
     }
 
+    // Local-first: remember the write counter, push pending edits, then pull.
+    const seqBefore = writeSeq();
     try {
       await flushOutbox();
     } catch { /* offline — the load below will fail and we stay in offline mode */ }
@@ -880,6 +882,16 @@ export const useStore = create<AppState>()((set, get) => ({
         if (typeof v === 'string' && v.trim() !== '') (settings as Record<string, unknown>)[k] = Number(v);
       }
       const safeMembers = members.length ? members : [SELF_MEMBER];
+
+      // Local edits the server has not confirmed yet (still queued, or made
+      // while this fetch was running) are missing from the fetched data.
+      // Applying it would make e.g. a just-added task vanish until a later
+      // pull — so keep the local state; the next pull after the outbox has
+      // drained brings in remote changes.
+      if (pendingCount() > 0 || writeSeq() !== seqBefore) {
+        set({ dataLoaded: true });
+        return;
+      }
 
       // Trust the server completely — an empty DB is legitimately empty.
       set({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextTaskNumber ?? 1, dataLoaded: true });

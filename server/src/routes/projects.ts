@@ -57,9 +57,10 @@ router.post('/', (req, res) => {
 });
 
 router.patch('/reorder', (req, res) => {
-  const { ids } = req.body as { ids: string[] };
+  // offset: the client sends long lists in chunks — chunk k starts at sort_order offset.
+  const { ids, offset = 0 } = req.body as { ids: string[]; offset?: number };
   const upd = db.prepare('UPDATE projects SET sort_order = ? WHERE id = ?');
-  db.transaction(() => ids.forEach((id, i) => upd.run(i, id)))();
+  db.transaction(() => ids.forEach((id, i) => upd.run(Number(offset) + i, id)))();
   res.status(204).end();
 });
 

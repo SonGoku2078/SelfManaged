@@ -253,10 +253,13 @@ export default async ({ req, res, error }) => {
 
     if (req.method === 'PATCH' && routeId === 'reorder' && ['tasks', 'projects', 'sections'].includes(resource)) {
       const ids = Array.isArray(body.ids) ? body.ids : [];
+      // Clients send long orders in chunks of <=100 (one transaction each);
+      // offset is the absolute sortOrder of the chunk's first id.
+      const offset = Number.isInteger(body.offset) && body.offset >= 0 ? body.offset : 0;
       if (ids.length > 100) return response(res, { error: 'Maximum 100 reorder operations' }, 400);
       const transaction = await db.createTransaction({ ttl: 60 });
       try {
-        await Promise.all(ids.map((id, index) => db.updateRow({ databaseId: DATABASE_ID, tableId, rowId: stableRowId(id), data: { sortOrder: index }, transactionId: transaction.$id })));
+        await Promise.all(ids.map((id, index) => db.updateRow({ databaseId: DATABASE_ID, tableId, rowId: stableRowId(id), data: { sortOrder: offset + index }, transactionId: transaction.$id })));
         await db.updateTransaction({ transactionId: transaction.$id, commit: true });
       } catch (e) {
         await db.updateTransaction({ transactionId: transaction.$id, rollback: true }).catch(() => {});
