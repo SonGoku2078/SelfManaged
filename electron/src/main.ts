@@ -136,13 +136,15 @@ function startPolling(win: BrowserWindow): void {
   }, POLL_MS);
 }
 
+// Offline start: even if the health check fails, load the target anyway — the
+// app's service worker (public/sw.js) serves the cached shell and the app runs
+// local-first on its offline snapshot. Without a cached shell the load fails
+// and did-fail-load switches to the fallback page + polling as before.
 async function connectAndLoad(win: BrowserWindow): Promise<void> {
-  if (await checkHealth(currentTarget)) {
-    void win.loadURL(currentTarget);
-  } else {
-    showFallback(win, 'error');
-    startPolling(win);
+  if (!(await checkHealth(currentTarget))) {
+    logToFile(`health failed for ${currentTarget} — trying cached app (offline start)`);
   }
+  void win.loadURL(currentTarget);
 }
 
 // ── IPC (#62): the fallback/change page sets a new server URL ────────────────
@@ -326,6 +328,8 @@ function createWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     title: 'SelfManaged',
+    // Automated tests run the window invisibly so they never pop up on the desktop.
+    show: !process.env.TM_E2E_HIDDEN,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

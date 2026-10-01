@@ -37,6 +37,7 @@ const electron_1 = require("electron");
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const http = __importStar(require("http"));
+const https = __importStar(require("https"));
 const electron_updater_1 = require("electron-updater");
 // Thin client (#55/#60/#62): the desktop app is a window onto a running
 // SelfManaged server. Target resolution, first hit wins:
@@ -113,9 +114,14 @@ function resolveTarget() {
 }
 let currentTarget = ''; // set in main() — app.isPackaged needs the ready app
 // ── Health check + fallback page + polling ──────────────────────────────────
+// The `http` module can't speak TLS — pointed at an https:// target (e.g. the
+// Appwrite site, which is HTTPS-only) it silently fails/times out on every
+// check, so the app never gets past "Verbinden" for any https:// server.
+// Pick the module matching the target's own scheme instead of hardcoding http.
 function checkHealth(target) {
+    const client = target.startsWith('https:') ? https : http;
     return new Promise((resolve) => {
-        const req = http.get(`${target}/health`, { timeout: 1500 }, (res) => {
+        const req = client.get(`${target}/health`, { timeout: 1500 }, (res) => {
             res.resume();
             resolve(res.statusCode === 200);
         });
@@ -155,14 +161,15 @@ function startPolling(win) {
         })();
     }, POLL_MS);
 }
+// Offline start: even if the health check fails, load the target anyway — the
+// app's service worker (public/sw.js) serves the cached shell and the app runs
+// local-first on its offline snapshot. Without a cached shell the load fails
+// and did-fail-load switches to the fallback page + polling as before.
 async function connectAndLoad(win) {
-    if (await checkHealth(currentTarget)) {
-        void win.loadURL(currentTarget);
+    if (!(await checkHealth(currentTarget))) {
+        logToFile(`health failed for ${currentTarget} — trying cached app (offline start)`);
     }
-    else {
-        showFallback(win, 'error');
-        startPolling(win);
-    }
+    void win.loadURL(currentTarget);
 }
 // ── IPC (#62): the fallback/change page sets a new server URL ────────────────
 electron_1.ipcMain.handle('tm:get-target', () => currentTarget);
@@ -213,8 +220,19 @@ function setupAutoUpdater() {
     electron_updater_1.autoUpdater.logger = null;
     electron_updater_1.autoUpdater.on('update-available', (info) => {
         logToFile(`update-available ${info.version}`);
-        if (manualCheck)
-            notify('Update wird geladen', `Version ${info.version} wird im Hintergrund geladen.`);
+        // Immer benachrichtigen, nicht nur bei manueller Pruefung: der normale
+        // Weg ist der stille Hintergrund-Check beim Start, und genau da lief der
+        // Download bisher komplett unsichtbar ab — man sah nur ploetzlich den
+        // "Update bereit"-Dialog und im Zweifel dachte man, die App haengt.
+        notify('Update gefunden', `Version ${info.version} wird im Hintergrund geladen…`);
+    });
+    electron_updater_1.autoUpdater.on('download-progress', (progress) => {
+        // Windows-Taskleisten-Fortschrittsbalken auf dem App-Icon — sichtbares
+        // Lebenszeichen waehrend des Downloads, ohne dass ein Fenster/Dialog
+        // aufploppt oder der Fokus geklaut wird.
+        const win = mainWindow;
+        if (win && !win.isDestroyed())
+            win.setProgressBar(Math.max(0, Math.min(1, progress.percent / 100)));
     });
     electron_updater_1.autoUpdater.on('update-not-available', () => {
         logToFile('update-not-available');
@@ -231,6 +249,10 @@ function setupAutoUpdater() {
     electron_updater_1.autoUpdater.on('update-downloaded', (info) => {
         updateReady = info.version;
         logToFile(`update-downloaded ${info.version}`);
+        const win = mainWindow;
+        if (win && !win.isDestroyed())
+            win.setProgressBar(-1); // Balken entfernen, Download fertig
+        notify('Update bereit', `Version ${info.version} ist bereit — Neustart installiert es.`);
         buildMenu(); // Menue zeigt jetzt "Update installieren und neu starten"
         void electron_1.dialog
             .showMessageBox({
@@ -249,6 +271,9 @@ function setupAutoUpdater() {
     });
     electron_updater_1.autoUpdater.on('error', (err) => {
         logToFile(`update-error ${String(err)}`);
+        const win = mainWindow;
+        if (win && !win.isDestroyed())
+            win.setProgressBar(-1);
         if (manualCheck) {
             manualCheck = false;
             void electron_1.dialog.showMessageBox({
@@ -324,6 +349,8 @@ function createWindow() {
         minWidth: 900,
         minHeight: 600,
         title: 'SelfManaged',
+        // Automated tests run the window invisibly so they never pop up on the desktop.
+        show: !process.env.TM_E2E_HIDDEN,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,

@@ -15,6 +15,15 @@ if (!IS_APPWRITE_PROD) {
   useStore.getState().loadAll().catch((e) => console.warn('initial loadAll failed', e));
 }
 
+// App-shell cache (public/sw.js): lets the app — incl. the desktop thin
+// client — start without a connection. Production builds on a secure origin
+// only (the Appwrite site); plain-http LAN servers can't register one anyway.
+if (import.meta.env.PROD && window.isSecureContext && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW registration failed', e));
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthGate><App /></AuthGate>
