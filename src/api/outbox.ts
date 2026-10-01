@@ -36,7 +36,6 @@ const DEAD_KEY = 'tm-outbox-dead';
 const MAX_ATTEMPTS = 5;
 
 let queue: Op[] = load();
-let flushing = false;
 let listeners: Array<(n: number) => void> = [];
 
 // Recover dead-lettered ops that failed for a TRANSIENT reason (server 5xx /
@@ -144,6 +143,14 @@ export function pendingCount(): number {
   return queue.length;
 }
 
+// Bumped on every enqueue. loadAll() compares it before/after its fetch: if the
+// user changed anything meanwhile, the fetched server state is already stale
+// and must not replace the local one (that made new tasks vanish for minutes).
+let seq = 0;
+export function writeSeq(): number {
+  return seq;
+}
+
 export function onChange(fn: (n: number) => void): () => void {
   listeners.push(fn);
   fn(queue.length);
@@ -152,54 +159,92 @@ export function onChange(fn: (n: number) => void): () => void {
   };
 }
 
+// The op currently on the wire — must not be coalesced away under flush().
+// If a newer reorder supersedes it, it is only flagged and dropped once its
+// request has settled.
+let inFlight: Op | null = null;
+let inFlightSuperseded = false;
+
 export function enqueue(kind: string, payload: Record<string, unknown>): void {
+  seq++;
+  // A reorder carries the COMPLETE order, so a newer one supersedes every
+  // queued older one of the same kind — dragging 10× sends one order, not 10.
+  if (kind.endsWith('.reorder')) {
+    queue = queue.filter((o) => o.kind !== kind || o === inFlight);
+    if (inFlight?.kind === kind) inFlightSuperseded = true;
+  }
   queue.push({ id: uid(), ts: Date.now(), kind, payload });
   persist();
   void flush();
 }
 
+// 4xx that are about the session/rate, not the op itself — never dead-letter
+// those (a dead-lettered edit is a lost edit); just retry later.
+const TRANSIENT_4XX = new Set([401, 408, 425, 429]);
+// Other 4xx are deterministic (validation, not found): retrying won't help.
+const MAX_ATTEMPTS_4XX = 2;
+
+let flushPromise: Promise<void> | null = null;
+
 // Replay the queue FIFO. Resolves when the queue is drained or stalls (offline /
-// a blocking error). Safe to call repeatedly; concurrent calls are coalesced.
-export async function flush(): Promise<void> {
-  if (flushing) return;
-  flushing = true;
-  try {
-    while (queue.length) {
-      const op = queue[0];
-      const handler = handlers[op.kind];
-      if (!handler) {
-        deadLetter(op, 'unknown kind');
-        queue.shift();
-        persist();
+// a transient error). Concurrent callers share the running flush — awaiting
+// flush() really waits for it (it used to return at once, so loadAll() could
+// pull server state before the pending create had reached the server).
+export function flush(): Promise<void> {
+  if (!flushPromise) {
+    flushPromise = drain().finally(() => { flushPromise = null; });
+  }
+  return flushPromise;
+}
+
+function drop(op: Op): void {
+  queue = queue.filter((o) => o !== op);
+  persist();
+}
+
+async function drain(): Promise<void> {
+  while (queue.length) {
+    const op = queue[0];
+    const handler = handlers[op.kind];
+    if (!handler) {
+      deadLetter(op, 'unknown kind');
+      drop(op);
+      continue;
+    }
+    inFlight = op;
+    inFlightSuperseded = false;
+    try {
+      await handler(op.payload);
+      drop(op);
+    } catch (e) {
+      const status = httpStatus(e);
+      if (inFlightSuperseded) {
+        // A newer reorder is queued behind it — no point retrying this one.
+        drop(op);
+        if (status === null || TRANSIENT_4XX.has(status) || status >= 500) break;
         continue;
       }
-      try {
-        await handler(op.payload);
-        queue.shift();
-        persist();
-      } catch (e) {
-        const status = httpStatus(e);
-        if (status === null) {
-          // Connectivity failure — the server is unreachable, so nothing else
-          // will succeed either. Keep the whole queue and retry on the next tick.
-          break;
-        }
-        // Any HTTP error (4xx client error OR 5xx server error). Retry a few
-        // times; if it keeps failing, park it to the dead-letter list so ONE
-        // poison op can never block the rest of the queue (and the user's other
-        // edits) forever. Dead-letters are recovered and retried on next load.
-        op.attempts = (op.attempts ?? 0) + 1;
-        if (op.attempts >= MAX_ATTEMPTS) {
-          deadLetter(op, String(e));
-          queue.shift();
-          persist();
-          continue;
-        }
-        persist();
+      if (status === null || TRANSIENT_4XX.has(status)) {
+        // Offline / timeout / session or rate limit — nothing else will
+        // succeed right now either. Keep the whole queue, retry next tick.
         break;
       }
+      // Real HTTP error for THIS op. Park it in the dead-letter list after a
+      // few tries so one poison op can never block the user's other edits.
+      // 5xx dead-letters are recovered and retried on the next app start.
+      op.attempts = (op.attempts ?? 0) + 1;
+      const max = status < 500 ? MAX_ATTEMPTS_4XX : MAX_ATTEMPTS;
+      if (op.attempts >= max) {
+        deadLetter(op, String(e));
+        drop(op);
+        continue;
+      }
+      persist();
+      // 4xx: retry right away (cheap, deterministic); 5xx: back off to next tick.
+      if (status >= 500) break;
+    } finally {
+      inFlight = null;
+      inFlightSuperseded = false;
     }
-  } finally {
-    flushing = false;
   }
 }

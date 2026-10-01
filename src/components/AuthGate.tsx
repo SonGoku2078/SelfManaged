@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import { AppwriteException } from 'appwrite';
 import { account, clearUserJwt, IS_APPWRITE_PROD } from '../appwrite/client';
+import { loadSnapshot } from '../api/cache';
+import { pendingCount } from '../api/outbox';
 import { useStore } from '../store';
 import './AuthGate.css';
 
@@ -32,7 +35,19 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         setState('signed-in');
         await loadData();
       })
-      .catch(() => { if (active) setState('signed-out'); });
+      .catch(async (e) => {
+        if (!active) return;
+        // Offline (no HTTP status) with local data → start local-first; the
+        // session is re-validated by the next API call once we're back online.
+        // Only a real "not signed in" answer from Appwrite shows the login.
+        const offline = !(e instanceof AppwriteException && e.code > 0);
+        if (offline && loadSnapshot()?.tasks?.length) {
+          setState('signed-in');
+          await loadData();
+        } else {
+          setState('signed-out');
+        }
+      });
     return () => { active = false; };
   }, []);
 
@@ -50,6 +65,12 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Logout clears the local outbox — unsynced edits would be lost.
+    const pending = pendingCount();
+    if (
+      pending > 0 &&
+      !window.confirm(`${pending} Änderung(en) sind noch nicht synchronisiert und gehen beim Abmelden verloren. Trotzdem abmelden?`)
+    ) return;
     setError('');
     try {
       await account.deleteSession({ sessionId: 'current' });

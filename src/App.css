@@ -82,15 +82,6 @@ body {
   overflow: hidden;
 }
 
-.server-offline-banner {
-  flex-shrink: 0;
-  background: #b71c1c;
-  color: #fff;
-  font-size: 12px;
-  padding: 6px 16px;
-  text-align: center;
-  z-index: 100;
-}
 .app-row {
   display: flex;
   flex: 1;
@@ -116,17 +107,37 @@ body {
   z-index: 101;
 }
 
-.server-sync-banner {
-  flex-shrink: 0;
-  background: #2e7d32;
+/* Sync/offline status floats above the layout instead of pushing it down. */
+.sync-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  max-width: min(680px, calc(100vw - 32px));
+  padding: 7px 16px;
+  border: none;
+  border-radius: 999px;
   color: #fff;
+  font: inherit;
   font-size: 12px;
-  padding: 5px 16px;
+  line-height: 1.4;
   text-align: center;
-  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  opacity: 0.95;
 }
-
-.server-offline-banner code {
+.sync-toast-offline {
+  background: #b71c1c;
+  pointer-events: none;
+}
+.sync-toast-pending {
+  background: #2e7d32;
+  cursor: pointer;
+}
+.sync-toast-pending:hover {
+  opacity: 1;
+}
+.sync-toast code {
   background: rgba(255,255,255,0.2);
   border-radius: 3px;
   padding: 1px 4px;
@@ -343,6 +354,7 @@ body {
   body {
     overflow: visible;
   }
+  .sync-toast,
   .sidebar,
   .calendar-panel,
   .projects-panel,

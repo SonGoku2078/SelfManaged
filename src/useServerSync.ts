@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flush as flushOutbox } from './api/outbox';
+import { apiFetch } from './api/client';
+import { IS_APPWRITE_PROD } from './appwrite/client';
 import { useStore } from './store';
 
 // Wie oft im Hintergrund frische Daten geholt werden, wenn das Fenster offen
 // liegen bleibt. Fokuswechsel laedt unabhaengig davon sofort (#86).
 const BACKGROUND_MS = 60_000;
-// Gesundheitspruefung des Servers (Online/Offline-Banner).
-const HEALTH_MS = 15_000;
+// Gesundheitspruefung des Servers (Online/Offline-Hinweis). Auf Appwrite kostet
+// jeder Check eine Function-Ausfuehrung, daher seltener.
+const HEALTH_MS = IS_APPWRITE_PROD ? 30_000 : 15_000;
+// Erst nach so vielen Fehlschlaegen in Folge gilt der Server als offline — ein
+// einzelner langsamer Check (Cold Start, WLAN-Schluckauf) blendet nichts ein.
+const OFFLINE_AFTER_FAILS = 2;
 
 export type RefreshState = 'idle' | 'refreshing' | 'done' | 'error';
 
@@ -58,21 +64,29 @@ export function useServerSync(): ServerSync {
   }, [pull]);
 
   // --- Health-Poll + erster Load ---
+  // Geprueft wird die API selbst (ueber apiFetch, also auf PROD durch die
+  // Appwrite-Function). Frueher ging fetch('/health') an die statische Site,
+  // die immer 200 liefert — sagte also nichts ueber die API aus und meldete bei
+  // jedem langsamen Seitenabruf (>3 s) faelschlich "Server nicht erreichbar".
   useEffect(() => {
     let cancelled = false;
+    let fails = 0;
     const check = () =>
-      fetch('/health', { signal: AbortSignal.timeout(3000) })
-        .then((r) => {
+      apiFetch('/health', { signal: AbortSignal.timeout(8000) })
+        .then(() => {
           if (cancelled) return;
-          setServerOnline(r.ok);
-          if (r.ok) {
-            // Immer draenen, damit ein einmal fehlgeschlagener Schreibvorgang
-            // weiter versucht wird; der allererste Load passiert hier.
-            void flushOutbox();
-            if (!useStore.getState().dataLoaded) void pull();
-          }
+          fails = 0;
+          setServerOnline(true);
+          // Immer draenen, damit ein einmal fehlgeschlagener Schreibvorgang
+          // weiter versucht wird; der allererste Load passiert hier.
+          void flushOutbox();
+          if (!useStore.getState().dataLoaded) void pull();
         })
-        .catch(() => { if (!cancelled) setServerOnline(false); });
+        .catch(() => {
+          if (cancelled) return;
+          fails++;
+          if (fails >= OFFLINE_AFTER_FAILS) setServerOnline(false);
+        });
     check();
     const id = window.setInterval(check, HEALTH_MS);
     const onOnline = () => { void flushOutbox(); void pull(); };

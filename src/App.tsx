@@ -428,20 +428,29 @@ function App() {
           🚧 ENTWICKLUNG &amp; TEST — getrennte Datenbank, keine Produktionsdaten
         </div>
       )}
+      {/* Sync-Status als schwebender Hinweis (overlay) — schiebt das Layout
+          nicht mehr nach unten. Lokal wird immer weitergearbeitet; die Outbox
+          synchronisiert, sobald die API wieder erreichbar ist. */}
       {serverOnline === false ? (
-        <div className="server-offline-banner">
-          ⚠ Server nicht erreichbar — Bitte <code>npm run dev</code> im <code>server/</code>-Verzeichnis starten.
+        <div className="sync-toast sync-toast-offline" role="status">
+          ⚡ Offline — du arbeitest lokal weiter.
           {pendingWrites > 0
-            ? ` Deine ${pendingWrites} Änderung(en) sind sicher gespeichert und werden synchronisiert, sobald der Server läuft.`
-            : ' Deine Änderungen werden zwischengespeichert und synchronisiert, sobald der Server läuft.'}
+            ? ` ${pendingWrites} Änderung(en) lokal gespeichert, Sync folgt automatisch.`
+            : ' Änderungen werden lokal gespeichert und später synchronisiert.'}
+          {appEnv !== 'production' && <> (Dev: <code>npm run dev</code> im <code>server/</code> starten)</>}
         </div>
       ) : syncVisible && pendingWrites > 0 ? (
-        <div className="server-sync-banner">
+        <button
+          type="button"
+          className="sync-toast sync-toast-pending"
+          title="Jetzt synchronisieren"
+          onClick={() => void refresh()}
+        >
           ⟳ {pendingWrites} Änderung(en) werden synchronisiert…
-        </div>
-      ) : !dataLoaded ? (
-        <div className="server-offline-banner">
-          ⚠ Daten konnten nicht geladen werden — Verbindung zum Server wird hergestellt…
+        </button>
+      ) : !dataLoaded && tasks.length === 0 ? (
+        <div className="sync-toast sync-toast-offline" role="status">
+          Verbindung zum Server wird hergestellt…
         </div>
       ) : null}
       <div className="app-row">

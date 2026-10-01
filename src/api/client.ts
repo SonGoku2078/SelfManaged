@@ -4,8 +4,11 @@
 // Precedence: localStorage 'tm-api-url' > build-time VITE_API_URL > default.
 // Fallback '' = same origin that served the app (#60): correct for the prod
 // build on any host; dev/vite sets VITE_API_URL, mobile stores tm-api-url.
-import { ExecutionMethod } from 'appwrite';
+import { AppwriteException, ExecutionMethod } from 'appwrite';
 import { APPWRITE_API_FUNCTION_ID, functions, IS_APPWRITE_PROD } from '../appwrite/client';
+
+// Synchronous function executions include cold starts — be generous, but never infinite.
+const APPWRITE_TIMEOUT_MS = 30_000;
 
 const DEFAULT_BASE_URL = IS_APPWRITE_PROD
   ? ((import.meta.env.VITE_APPWRITE_API_URL as string | undefined) ?? '')
@@ -76,13 +79,35 @@ function reviveDates(obj: unknown): unknown {
 async function appwriteApiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase() as ExecutionMethod;
   const body = typeof init?.body === 'string' ? init.body : '';
-  const execution = await functions.createExecution({
-    functionId: APPWRITE_API_FUNCTION_ID,
-    body,
-    async: false,
-    xpath: path,
-    method,
+  // createExecution has no timeout of its own: one hung call used to block the
+  // whole outbox ("5 Änderungen" that never synced). A timeout is a plain
+  // Error (no "API " prefix) → the outbox treats it as offline and retries.
+  // SDK errors with an HTTP code (401, 429, …) are mapped onto the same
+  // "API <path>: <status>" shape apiFetch uses, so the outbox can classify them.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Appwrite ${path}: timeout`)), APPWRITE_TIMEOUT_MS);
   });
+  let execution: Awaited<ReturnType<typeof functions.createExecution>>;
+  try {
+    execution = await Promise.race([
+      functions.createExecution({
+        functionId: APPWRITE_API_FUNCTION_ID,
+        body,
+        async: false,
+        xpath: path,
+        method,
+      }),
+      timeout,
+    ]);
+  } catch (e) {
+    if (e instanceof AppwriteException && e.code > 0) {
+      throw new Error(`API ${path}: ${e.code} ${e.message}`, { cause: e });
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (execution.responseStatusCode >= 400) {
     throw new Error(`API ${path}: ${execution.responseStatusCode} ${execution.responseBody || execution.errors || ''}`);
   }
@@ -109,4 +134,15 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
   if (res.status === 204) return undefined as T;
   return res.json().then(reviveDates) as T;
+}
+
+// The Appwrite API caps a reorder at 100 ids (one DB transaction). Task lists
+// are far longer, so every reorder used to fail with 400 and stall the outbox
+// behind it. Send the order in chunks; `offset` keeps sortOrder absolute.
+const REORDER_CHUNK = 100;
+export async function reorderChunked(path: string, ids: string[]): Promise<void> {
+  for (let offset = 0; offset < ids.length; offset += REORDER_CHUNK) {
+    const chunk = ids.slice(offset, offset + REORDER_CHUNK);
+    await apiFetch<void>(path, { method: 'PATCH', body: JSON.stringify({ ids: chunk, offset }) });
+  }
 }
