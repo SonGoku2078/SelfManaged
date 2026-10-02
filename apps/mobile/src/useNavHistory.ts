@@ -10,7 +10,8 @@ export interface NavState {
   overlay: 'settings' | 'search' | null;
 }
 
-const INITIAL: NavState = { tab: 'projekte', projectId: null, taskId: null, overlay: null };
+// The app always starts on Heute (#114) — the day's agenda is what you open it for.
+export const HOME: NavState = { tab: 'today', projectId: null, taskId: null, overlay: null };
 
 const same = (a: NavState, b: NavState) =>
   a.tab === b.tab && a.projectId === b.projectId && a.taskId === b.taskId && a.overlay === b.overlay;
@@ -20,12 +21,14 @@ export interface NavApi {
   navigate: (partial: Partial<NavState>) => void;
   back: () => void;
   forward: () => void;
+  /** Fresh start on Heute — drops the back/forward history. */
+  reset: () => void;
   canBack: boolean;
   canForward: boolean;
 }
 
 export function useNavHistory(): NavApi {
-  const [nav, setNav] = useState<{ stack: NavState[]; index: number }>({ stack: [INITIAL], index: 0 });
+  const [nav, setNav] = useState<{ stack: NavState[]; index: number }>({ stack: [HOME], index: 0 });
 
   const navigate = useCallback((partial: Partial<NavState>) => {
     setNav((n) => {
@@ -46,11 +49,14 @@ export function useNavHistory(): NavApi {
     [],
   );
 
+  const reset = useCallback(() => setNav({ stack: [HOME], index: 0 }), []);
+
   return {
     state: nav.stack[nav.index],
     navigate,
     back,
     forward,
+    reset,
     canBack: nav.index > 0,
     canForward: nav.index < nav.stack.length - 1,
   };

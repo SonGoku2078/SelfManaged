@@ -32,6 +32,9 @@ const TAB_TITLE: Record<string, string> = {
   calendar: 'Kalender',
 };
 
+// Away at least this long → reopening the app lands on Heute again (#114).
+const RESUME_RESET_MS = 30_000;
+
 export default function MobileApp() {
   const theme = useStore((s) => s.settings.theme);
   const dataLoaded = useStore((s) => s.dataLoaded);
@@ -46,7 +49,13 @@ export default function MobileApp() {
   // work like a browser. `share` stays outside — it's a transient capture flow.
   const nav = useNavHistory();
   const { tab, projectId, taskId, overlay } = nav.state;
+  // Latest nav for listeners registered once (hardware back, resume reset).
+  const navRef = useRef(nav);
+  navRef.current = nav;
   const openTask = (id: string) => nav.navigate({ taskId: id, overlay: null });
+  // Last navigation triggered from outside the app (reminder tap) — a resume
+  // reset must not undo it (#114).
+  const externalNavAt = useRef(0);
   const openProject = (id: string) => nav.navigate({ tab: 'projekte', projectId: id, taskId: null, overlay: null });
   const changeTab = (t: typeof tab) => nav.navigate({ tab: t, projectId: null, taskId: null, overlay: null });
 
@@ -77,7 +86,23 @@ export default function MobileApp() {
   const reminderSoundUri = useStore((s) => s.settings.reminderSoundUri || null);
   useEffect(() => { ensureNotificationPermission(); }, []);
   // Tap on a reminder → open that task. Registered once.
-  useEffect(() => { onReminderTap((taskId) => openTask(taskId)); }, []);
+  useEffect(() => { onReminderTap((taskId) => { externalNavAt.current = Date.now(); openTask(taskId); }); }, []);
+  // Back from the background after a while → start over on Heute, like a fresh
+  // launch (#114). A quick app switch (copy text, answer a message) keeps the
+  // current screen; a reminder tap that just opened a task wins.
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      const away = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      if (away < RESUME_RESET_MS) return;
+      if (Date.now() - externalNavAt.current < 2000) return;
+      navRef.current.reset();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
   useEffect(() => {
     if (!dataLoaded) return;
     const id = window.setTimeout(() => {
@@ -102,8 +127,6 @@ export default function MobileApp() {
     return () => { active = false; document.removeEventListener('visibilitychange', onVis); off(); };
   }, []);
   // Android hardware back: go back through nav history, else leave the app.
-  const navRef = useRef(nav);
-  navRef.current = nav;
   useEffect(() => {
     let sub: { remove: () => void } | undefined;
     try {
