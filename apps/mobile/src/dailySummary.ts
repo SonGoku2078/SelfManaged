@@ -59,3 +59,40 @@ export function buildDailySummaries(tasks: Task[], now = new Date()): DailySumma
   }
   return out;
 }
+
+// ── Task reminders (#118) ─────────────────────────────────────────────────
+// Every task with a start time reminds AT its start time; a configured lead
+// time adds an EARLIER reminder on top (it used to replace the one at the
+// start time). Planned for the same window as the summaries, so a task for
+// tomorrow 09:07 reminds even if the app is not opened tomorrow morning.
+
+export interface TaskReminder {
+  id: number;
+  at: Date;
+  title: string;
+  body: string;
+  taskId: string;
+}
+
+// Lead reminders get their own id range next to the task number.
+const LEAD_ID_OFFSET = 1_000_000;
+
+export function buildTaskReminders(tasks: Task[], leadMin: number, now = new Date()): TaskReminder[] {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + SUMMARY_DAYS + 1);
+  const out: TaskReminder[] = [];
+  for (const t of tasks) {
+    if (t.parentId || t.completed || !t.dueDate || t.startMinutes == null) continue;
+    const d = new Date(t.dueDate);
+    const startAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, t.startMinutes);
+    if (startAt <= now || startAt >= end) continue;
+    const time = hhmm(t.startMinutes);
+    out.push({ id: t.number, at: startAt, title: `⏰ ${t.title}`, body: `Jetzt fällig (${time})`, taskId: t.id });
+    if (leadMin > 0) {
+      const leadAt = new Date(startAt.getTime() - leadMin * 60_000);
+      if (leadAt > now) {
+        out.push({ id: t.number + LEAD_ID_OFFSET, at: leadAt, title: `⏰ ${t.title}`, body: `In ${leadMin} Min fällig (um ${time})`, taskId: t.id });
+      }
+    }
+  }
+  return out;
+}

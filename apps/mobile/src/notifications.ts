@@ -5,8 +5,7 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Ringtone } from './ringtone';
 import type { Task } from './types';
-import { isSameDay } from './selectors';
-import { buildDailySummaries } from './dailySummary';
+import { buildDailySummaries, buildTaskReminders } from './dailySummary';
 const CHANNEL_ID = 'rem_custom';
 
 export interface ReminderPrefs {
@@ -81,9 +80,6 @@ export async function sendTestNotification(p: { sound: boolean; vibrate: boolean
   }
 }
 
-const hhmm = (minutes: number) =>
-  `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-
 // Re-scheduled after every sync so the plan follows the current data + settings.
 export async function scheduleReminders(tasks: Task[], prefs: ReminderPrefs): Promise<void> {
   try {
@@ -99,25 +95,16 @@ export async function scheduleReminders(tasks: Task[], prefs: ReminderPrefs): Pr
     }
 
     const now = new Date();
-    const dueToday = tasks.filter(
-      (t) => !t.parentId && !t.completed && t.dueDate && isSameDay(t.dueDate, now)
-    );
-
     const notifications = [];
-    for (const t of dueToday) {
-      if (t.startMinutes == null) continue;
-      const eventAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, t.startMinutes);
-      const fireAt = new Date(eventAt.getTime() - leadMin * 60_000);
-      if (fireAt <= now) continue;
+    // Zur Startzeit immer; mit Vorlaufzeit zusätzlich davor (#118).
+    for (const r of buildTaskReminders(tasks, leadMin, now)) {
       notifications.push({
-        id: t.number, // stabile, kleine Int-Id
-        title: `⏰ ${t.title}`,
-        body: leadMin > 0
-          ? `In ${leadMin} Min fällig (um ${hhmm(t.startMinutes)})`
-          : `Fällig um ${hhmm(t.startMinutes)}`,
+        id: r.id,
+        title: r.title,
+        body: r.body,
         channelId,
-        extra: { taskId: t.id }, // Tap → in die Aufgabe springen
-        schedule: { at: fireAt, allowWhileIdle: true },
+        extra: { taskId: r.taskId }, // Tap → in die Aufgabe springen
+        schedule: { at: r.at, allowWhileIdle: true },
       });
     }
 
