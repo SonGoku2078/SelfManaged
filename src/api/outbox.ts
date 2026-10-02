@@ -20,6 +20,7 @@ import {
   activityLogApi,
   settingsApi,
 } from './index';
+import { isTimeout } from './client';
 
 export interface Op {
   id: string;
@@ -50,7 +51,9 @@ let listeners: Array<(n: number) => void> = [];
     if (!Array.isArray(dead) || !dead.length) return;
     const is4xx = (o: { reason?: string }) => /:\s4\d\d\b/.test(o.reason ?? '');
     const permanent = dead.filter(is4xx);
-    const recoverable = dead.filter((o) => !is4xx(o));
+    // A dead reorder is a stale order — any later drag supersedes it, and
+    // replaying it at the queue head would just block the newer edits.
+    const recoverable = dead.filter((o) => !is4xx(o) && !isReorder(o));
     if (recoverable.length) {
       queue = [...recoverable.map((o) => ({ ...o, attempts: 0 })), ...queue];
     }
@@ -72,11 +75,25 @@ function load(): Op[] {
   }
 }
 
+function isReorder(op: { kind: string }): boolean {
+  return op.kind.endsWith('.reorder');
+}
+
 function persist(): void {
+  const data = JSON.stringify(queue);
   try {
-    localStorage.setItem(KEY, JSON.stringify(queue));
+    localStorage.setItem(KEY, data);
   } catch {
-    /* storage full / unavailable — queue still lives in memory */
+    // Storage quota: the display cache (tm-cache, several MB) is expendable —
+    // unsynced edits are not. Drop it and retry, else the queue would only
+    // live in memory and vanish on the next restart (#108).
+    try {
+      localStorage.removeItem('tm-cache');
+      localStorage.setItem(KEY, data);
+      console.warn('Outbox: storage full — dropped the display cache to keep pending edits');
+    } catch {
+      /* storage unavailable — queue still lives in memory */
+    }
   }
   for (const l of listeners) l(queue.length);
 }
@@ -202,9 +219,21 @@ function drop(op: Op): void {
   persist();
 }
 
+// Moves a failed reorder behind everything else: it only sets sortOrder, so
+// later edits never depend on it, and it must not hold them hostage (#108).
+function defer(op: Op, deferred: Set<Op>): void {
+  queue = [...queue.filter((o) => o !== op), op];
+  deferred.add(op);
+  persist();
+}
+
 async function drain(): Promise<void> {
+  // Reorders already pushed to the back in this run — meeting one again at
+  // the head means everything else has had its turn.
+  const deferred = new Set<Op>();
   while (queue.length) {
     const op = queue[0];
+    if (deferred.has(op)) break;
     const handler = handlers[op.kind];
     if (!handler) {
       deadLetter(op, 'unknown kind');
@@ -218,30 +247,42 @@ async function drain(): Promise<void> {
       drop(op);
     } catch (e) {
       const status = httpStatus(e);
+      // No answer in time ≠ unreachable: the server may be alive but busy.
+      const timedOut = status === null && isTimeout(e);
+      const offline = status === null && !timedOut;
       if (inFlightSuperseded) {
         // A newer reorder is queued behind it — no point retrying this one.
         drop(op);
-        if (status === null || TRANSIENT_4XX.has(status) || status >= 500) break;
+        if (offline) break;
         continue;
       }
-      if (status === null || TRANSIENT_4XX.has(status)) {
-        // Offline / timeout / session or rate limit — nothing else will
-        // succeed right now either. Keep the whole queue, retry next tick.
+      if (offline || (status !== null && TRANSIENT_4XX.has(status))) {
+        // Unreachable, or session/rate limit: retry next tick. A rate-limited
+        // reorder steps aside so the (cheaper) edits behind it get a chance.
+        if (!offline && isReorder(op)) {
+          defer(op, deferred);
+          continue;
+        }
         break;
       }
-      // Real HTTP error for THIS op. Park it in the dead-letter list after a
-      // few tries so one poison op can never block the user's other edits.
-      // 5xx dead-letters are recovered and retried on the next app start.
+      // Real failure of THIS op (HTTP error or timeout). Park it after a few
+      // tries so one poison op can never block the user's other edits.
+      // 5xx/timeout dead-letters are recovered on the next app start.
       op.attempts = (op.attempts ?? 0) + 1;
-      const max = status < 500 ? MAX_ATTEMPTS_4XX : MAX_ATTEMPTS;
+      const max = status !== null && status < 500 ? MAX_ATTEMPTS_4XX : MAX_ATTEMPTS;
       if (op.attempts >= max) {
-        deadLetter(op, String(e));
+        // A stale order is not worth keeping — the next drag sends a new one.
+        if (!isReorder(op)) deadLetter(op, String(e));
         drop(op);
         continue;
       }
+      if (isReorder(op)) {
+        defer(op, deferred);
+        continue;
+      }
       persist();
-      // 4xx: retry right away (cheap, deterministic); 5xx: back off to next tick.
-      if (status >= 500) break;
+      // 4xx: retry right away (cheap, deterministic); 5xx/timeout: back off.
+      if (status === null || status >= 500) break;
     } finally {
       inFlight = null;
       inFlightSuperseded = false;

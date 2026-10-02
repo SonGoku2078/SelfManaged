@@ -136,13 +136,22 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   return res.json().then(reviveDates) as T;
 }
 
-// The Appwrite API caps a reorder at 100 ids (one DB transaction). Task lists
-// are far longer, so every reorder used to fail with 400 and stall the outbox
-// behind it. Send the order in chunks; `offset` keeps sortOrder absolute.
-const REORDER_CHUNK = 100;
+// A reorder carries the complete order (1600+ ids). It goes out as ONE call:
+// the server writes only rows whose sortOrder changed (#108). Chunking it into
+// 100-id calls (#106) multiplied Appwrite executions per drag and ran into the
+// per-user execution rate limit, which stalled the whole outbox. `offset`
+// stays in the protocol so a cap can be reintroduced without a server change.
+const REORDER_CHUNK = 5000;
 export async function reorderChunked(path: string, ids: string[]): Promise<void> {
   for (let offset = 0; offset < ids.length; offset += REORDER_CHUNK) {
     const chunk = ids.slice(offset, offset + REORDER_CHUNK);
     await apiFetch<void>(path, { method: 'PATCH', body: JSON.stringify({ ids: chunk, offset }) });
   }
+}
+
+// A request that got no answer in time — unlike a refused connection the
+// server may be alive (and busy), so the outbox counts it as a failed attempt.
+export function isTimeout(e: unknown): boolean {
+  if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')) return true;
+  return e instanceof Error && /: timeout$/.test(e.message);
 }

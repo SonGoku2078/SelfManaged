@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { flush as flushOutbox } from './api/outbox';
+import { flush as flushOutbox, pendingCount } from './api/outbox';
 import { apiFetch } from './api/client';
 import { IS_APPWRITE_PROD } from './appwrite/client';
 import { useStore } from './store';
@@ -13,6 +13,9 @@ const HEALTH_MS = IS_APPWRITE_PROD ? 30_000 : 15_000;
 // Erst nach so vielen Fehlschlaegen in Folge gilt der Server als offline — ein
 // einzelner langsamer Check (Cold Start, WLAN-Schluckauf) blendet nichts ein.
 const OFFLINE_AFTER_FAILS = 2;
+// Fokus/Sichtbarkeit loest hoechstens so oft einen Pull aus — Fensterwechsel
+// passieren staendig, jeder Pull sind 9 API-Calls (#108).
+const FOCUS_PULL_MIN_MS = 30_000;
 
 export type RefreshState = 'idle' | 'refreshing' | 'done' | 'error';
 
@@ -50,7 +53,8 @@ export function useServerSync(): ServerSync {
     loading.current = true;
     try {
       await loadAll();
-      return useStore.getState().dataLoaded;
+      // Erfolg heisst: Server erreicht UND alles Lokale ist oben angekommen.
+      return useStore.getState().dataLoaded && pendingCount() === 0;
     } finally {
       loading.current = false;
     }
@@ -71,22 +75,32 @@ export function useServerSync(): ServerSync {
   useEffect(() => {
     let cancelled = false;
     let fails = 0;
-    const check = () =>
+    const online = () => {
+      fails = 0;
+      setServerOnline(true);
+      // Immer draenen, damit ein einmal fehlgeschlagener Schreibvorgang
+      // weiter versucht wird; der allererste Load passiert hier.
+      void flushOutbox();
+      if (!useStore.getState().dataLoaded) void pull();
+    };
+    const check = () => {
       apiFetch('/health', { signal: AbortSignal.timeout(8000) })
         .then(() => {
-          if (cancelled) return;
-          fails = 0;
-          setServerOnline(true);
-          // Immer draenen, damit ein einmal fehlgeschlagener Schreibvorgang
-          // weiter versucht wird; der allererste Load passiert hier.
-          void flushOutbox();
-          if (!useStore.getState().dataLoaded) void pull();
+          if (!cancelled) online();
         })
-        .catch(() => {
+        .catch((e) => {
           if (cancelled) return;
+          // Eine HTTP-Antwort (z. B. 429 Rate-Limit, 401) heisst: Server
+          // erreichbar. "Offline" nur ohne jede Antwort.
+          if (e instanceof Error && e.message.startsWith('API ')) {
+            fails = 0;
+            setServerOnline(true);
+            return;
+          }
           fails++;
           if (fails >= OFFLINE_AFTER_FAILS) setServerOnline(false);
         });
+    };
     check();
     const id = window.setInterval(check, HEALTH_MS);
     const onOnline = () => { void flushOutbox(); void pull(); };
@@ -111,8 +125,11 @@ export function useServerSync(): ServerSync {
 
   // --- Fokus/Sichtbarkeit: sofort nachladen (AC2, der 'zurueck im Heimnetz'-Fall) ---
   useEffect(() => {
+    let lastFocusPull = 0;
     const onFocus = () => {
       if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastFocusPull < FOCUS_PULL_MIN_MS) return;
+      lastFocusPull = Date.now();
       void pull();
     };
     document.addEventListener('visibilitychange', onFocus);
