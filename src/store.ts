@@ -861,6 +861,11 @@ export const useStore = create<AppState>()((set, get) => ({
       await flushOutbox();
     } catch { /* offline — the load below will fail and we stay in offline mode */ }
 
+    // Edits still queued → the fetched data would be discarded anyway (see the
+    // guard below). Skip the 9 calls: on Appwrite each one is a function
+    // execution counted against the per-user rate limit (#108).
+    if (pendingCount() > 0) return;
+
     try {
       const [tasks, projects, sections, blockers, categories, savedViews, activityLog, members, settingsData] = await Promise.all([
         tasksApi.getAll(),

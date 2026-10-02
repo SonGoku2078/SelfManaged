@@ -129,6 +129,28 @@ async function listAll(db, tableId, order = [], orderDesc = []) {
   return (await db.listRows({ databaseId: DATABASE_ID, tableId, queries, total: false })).rows;
 }
 
+const REORDER_MAX = 10000;
+const REORDER_CONCURRENCY = 8;
+
+// rowId → sortOrder for a whole table. Selects only the needed column (task
+// rows carry descriptions/attachments); falls back to full rows if select
+// is rejected.
+async function currentSortOrders(db, tableId) {
+  let rows;
+  try {
+    rows = (await db.listRows({ databaseId: DATABASE_ID, tableId, queries: [Query.select(['$id', 'sortOrder']), Query.limit(5000)], total: false })).rows;
+  } catch {
+    rows = await listAll(db, tableId);
+  }
+  return new Map(rows.map((r) => [r.$id, r.sortOrder]));
+}
+
+async function forEachLimited(items, limit, fn) {
+  let next = 0;
+  const worker = async () => { while (next < items.length) await fn(items[next++]); };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 // Deletes every row matching `matchQuery` in batches that fit the Appwrite
 // Free-plan transaction limit (100 ops), instead of one big transaction that
 // throws once a project/task subtree exceeds that limit. Each batch commits
@@ -252,20 +274,25 @@ export default async ({ req, res, error }) => {
     }
 
     if (req.method === 'PATCH' && routeId === 'reorder' && ['tasks', 'projects', 'sections'].includes(resource)) {
-      const ids = Array.isArray(body.ids) ? body.ids : [];
-      // Clients send long orders in chunks of <=100 (one transaction each);
-      // offset is the absolute sortOrder of the chunk's first id.
+      const ids = Array.isArray(body.ids) ? body.ids.filter((id) => typeof id === 'string') : [];
+      // offset = absolute sortOrder of ids[0] (kept for chunked clients).
       const offset = Number.isInteger(body.offset) && body.offset >= 0 ? body.offset : 0;
-      if (ids.length > 100) return response(res, { error: 'Maximum 100 reorder operations' }, 400);
-      const transaction = await db.createTransaction({ ttl: 60 });
-      try {
-        await Promise.all(ids.map((id, index) => db.updateRow({ databaseId: DATABASE_ID, tableId, rowId: stableRowId(id), data: { sortOrder: offset + index }, transactionId: transaction.$id })));
-        await db.updateTransaction({ transactionId: transaction.$id, commit: true });
-      } catch (e) {
-        await db.updateTransaction({ transactionId: transaction.$id, rollback: true }).catch(() => {});
-        throw e;
-      }
-      return empty(res);
+      if (ids.length > REORDER_MAX) return response(res, { error: `Maximum ${REORDER_MAX} reorder ids` }, 400);
+      // The client always sends the COMPLETE order (1600+ tasks), but a drag
+      // changes only a few positions. Write just the rows whose sortOrder
+      // differs, and skip ids the server no longer has (deleted elsewhere).
+      // No transaction: every write is idempotent, a retry finishes the rest.
+      // (Was: 17 executions × 100-row transactions per drag → Appwrite's
+      // per-user execution rate limit stalled the whole outbox, #108.)
+      const current = await currentSortOrders(db, tableId);
+      const changes = [];
+      ids.forEach((id, index) => {
+        const rowId = stableRowId(id);
+        if (current.has(rowId) && current.get(rowId) !== offset + index) changes.push([rowId, offset + index]);
+      });
+      await forEachLimited(changes, REORDER_CONCURRENCY, ([rowId, sortOrder]) =>
+        db.updateRow({ databaseId: DATABASE_ID, tableId, rowId, data: { sortOrder } }));
+      return response(res, { updated: changes.length });
     }
 
     if (req.method === 'PATCH' && routeId) {

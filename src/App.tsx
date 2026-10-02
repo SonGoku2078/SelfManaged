@@ -560,7 +560,7 @@ function App() {
                   : refreshState === 'done'
                     ? 'Aktualisiert'
                     : refreshState === 'error'
-                      ? 'Server nicht erreichbar'
+                      ? 'Nicht alles synchronisiert (Server nicht erreichbar oder ausgelastet)'
                       : 'Daten aktualisieren'
               }
               onClick={() => void refresh()}
