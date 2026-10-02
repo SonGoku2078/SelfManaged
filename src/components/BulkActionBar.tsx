@@ -149,7 +149,7 @@ export default function BulkActionBar({
           <button
             className="bulk-btn"
             disabled={disabled}
-            title="Für heute vormerken (verfällt über Nacht)"
+            title="Für heute vormerken (bleibt, bis erledigt oder entfernt)"
             onClick={() => apply({ todayDate: dateKey(new Date()) }, 'Heute')}
           >
             ☀️ Heute

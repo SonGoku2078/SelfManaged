@@ -105,9 +105,10 @@ const tasks: ApiTask[] = [
   task({ id: 'f', number: 6, title: 'Fällig morgen', dueDate: iso(tomorrow) }),
   task({ id: 'g', number: 7, title: 'Erledigt, wäre überfällig', dueDate: iso('2026-09-01'), completed: true }),
   task({ id: 'h', number: 8, title: 'Nichts' }),
+  task({ id: 'i', number: 9, title: 'Gestern geplant, offen', todayDate: '2026-09-13' }),
 ];
 const planToday = groupDayPlan(tasks, today, today);
-assert.deepEqual(planToday.geplant.map((t) => t.id), ['a', 'c']);
+assert.deepEqual(planToday.geplant.map((t) => t.id), ['a', 'c', 'i'], '☀️ von gestern bleibt im heutigen Plan (#112)');
 assert.deepEqual(planToday.faellig.map((t) => t.id), ['b'], 'c ist schon in geplant (jeder Task genau einmal)');
 assert.deepEqual(planToday.ueberfaellig.map((t) => t.id), ['d'], 'erledigte zählen nicht');
 const planTomorrow = groupDayPlan(tasks, tomorrow, today);
