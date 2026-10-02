@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { useStore } from '../store';
-import { outboxOnChange, getBaseUrl, flushOutbox } from '../api';
+import { getBaseUrl } from '../api';
 import { IS_APPWRITE_PROD } from '../../../../src/appwrite/client';
 import { useAutoSync } from '../useAutoSync';
 import { useNavHistory } from '../useNavHistory';
@@ -39,10 +39,9 @@ export default function MobileApp() {
   const theme = useStore((s) => s.settings.theme);
   const dataLoaded = useStore((s) => s.dataLoaded);
   const loadAll = useStore((s) => s.loadAll);
-  const [pending, setPending] = useState(0);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [share, setShare] = useState<SharedPayload | null>(null);
-  const serverOnline = useAutoSync();
+  useAutoSync();
 
   // All navigable UI (tab, project drill-down, task detail, settings/search
   // overlays) lives in a history stack so back/forward (swipe + hardware back)
@@ -59,7 +58,6 @@ export default function MobileApp() {
   const openProject = (id: string) => nav.navigate({ tab: 'projekte', projectId: id, taskId: null, overlay: null });
   const changeTab = (t: typeof tab) => nav.navigate({ tab: t, projectId: null, taskId: null, overlay: null });
 
-  const syncNow = () => { flushOutbox(); loadAll(); };
   const swipe = useHorizontalSwipe(nav.back, nav.forward);
   // Pull-to-refresh (#63). loadAll() already drains the outbox first and never
   // rejects — on an unreachable server it keeps the local state and flags
@@ -72,7 +70,6 @@ export default function MobileApp() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
-  useEffect(() => outboxOnChange(setPending), []);
   useEffect(() => {
     checkForUpdate().then((u) => { if (u?.available && u.apkUrl) setUpdate(u); });
   }, []);
@@ -161,19 +158,9 @@ export default function MobileApp() {
       ) : envKind === 'other' ? (
         <div className="m-env-other">⚙ Kein Server gewählt — in ⚙ Einstellungen eintragen</div>
       ) : null}
-      {pending > 0 ? (
-        serverOnline ? (
-          <button className="m-sync-banner" onClick={syncNow}>
-            ↻ {pending} Änderung(en) werden synchronisiert…
-          </button>
-        ) : (
-          <button className="m-pending-offline" onClick={syncNow}>
-            ⏳ {pending} lokale Änderung(en) — offline, wird automatisch synchronisiert
-          </button>
-        )
-      ) : !serverOnline && !dataLoaded ? (
-        <div className="m-offline-banner">⚠ Offline — lokaler Stand.</div>
-      ) : null}
+      {/* No sync/offline bars here (#120): they slid in on every edit and
+          pushed the list down. Sync runs silently in the background; pull
+          down to refresh; pending edits are listed in ⚙ Einstellungen. */}
 
       <header className="m-header">
         <span className="m-title">{TAB_TITLE[tab]}</span>
