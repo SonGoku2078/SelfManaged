@@ -72,6 +72,10 @@ process.on('uncaughtException', (err) => {
 // E2E isolation: private userData also scopes config + single-instance lock.
 if (process.env.TM_USER_DATA_DIR)
     electron_1.app.setPath('userData', process.env.TM_USER_DATA_DIR);
+// Linux (#110): native Wayland where available (Omarchy/Hyprland, GNOME,
+// COSMIC) instead of blurry XWayland scaling; falls back to X11 otherwise.
+if (process.platform === 'linux')
+    electron_1.app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 // ── Persisted config (#62) ────────────────────────────────────────────────────
 const configPath = () => path.join(electron_1.app.getPath('userData'), 'config.json');
 function loadSavedServerUrl() {
@@ -351,6 +355,10 @@ function createWindow() {
         title: 'SelfManaged',
         // Automated tests run the window invisibly so they never pop up on the desktop.
         show: !process.env.TM_E2E_HIDDEN,
+        // Linux docks/taskbars take the window icon from here (Windows uses the EXE icon).
+        ...(process.platform === 'linux' && electron_1.app.isPackaged
+            ? { icon: path.join(process.resourcesPath, 'icon.png') }
+            : {}),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,

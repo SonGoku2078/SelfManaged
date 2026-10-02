@@ -1,0 +1,184 @@
+name: Desktop Linux
+
+# Baut den Desktop-Client fuer Linux (#110) — Gegenstueck zu desktop-exe.yml:
+#   .deb       Pop!_OS / Ubuntu / Debian      (sudo apt install ./SelfManaged-…amd64.deb)
+#   .pacman    Arch / Omarchy                 (sudo pacman -U SelfManaged-…x64.pacman)
+#   .AppImage  universell, ohne Installation  (Arch braucht dafuer fuse2)
+#   latest-linux.yml  Update-Feed fuer electron-updater (alle drei Formate)
+#
+# Trigger:
+#   - Tag `desktop-v1.3.4` (derselbe wie fuer Windows) -> bauen, auf Ubuntu +
+#     Arch installieren und starten (Smoke), dann an DASSELBE GitHub-Release
+#     haengen, das desktop-exe.yml anlegt.
+#   - PR, der electron/** aendert -> bauen + Smoke, nichts veroeffentlichen.
+#   - Manuell (Actions-Tab) -> bauen + Smoke, Pakete als Run-Artefakt.
+#
+# Version kommt wie bei Windows aus dem Tag (einzige Wahrheit).
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  pull_request:
+    paths:
+      - 'electron/**'
+      - 'public/icon-512.png'
+      - '.github/workflows/desktop-linux.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # pacman-Ziel: fpm braucht bsdtar.
+      - name: Build-Werkzeuge
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+
+      - name: Install electron dependencies
+        run: npm install
+        working-directory: electron
+
+      - name: Version aus dem Tag uebernehmen
+        shell: bash
+        run: |
+          RAW="${GITHUB_REF_NAME}"
+          VER="${RAW#desktop-v}"
+          if [[ "$RAW" == "$VER" ]]; then
+            VER=$(node -p "require('./electron/package.json').version")
+            echo "Kein desktop-v*-Tag - nutze package.json-Version $VER"
+          else
+            node -e "
+              const fs=require('fs');
+              const p='electron/package.json';
+              const j=JSON.parse(fs.readFileSync(p,'utf8'));
+              j.version=process.argv[1];
+              fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n');
+            " "$VER"
+            echo "Version auf $VER gesetzt"
+          fi
+
+      # Ohne Publisher (wie Windows): Artefakte haengt der release-Job an den
+      # desktop-v*-Tag, statt dass electron-builder ein v<version>-Draft anlegt.
+      - name: Build
+        working-directory: electron
+        run: npx tsc && npx electron-builder --linux --x64 --publish never
+
+      - name: Update-Feed pruefen
+        run: |
+          cat dist-electron/latest-linux.yml
+          for ext in AppImage deb pacman; do
+            grep -q "\.${ext}\b" dist-electron/latest-linux.yml || { echo "::error::latest-linux.yml listet kein .${ext}"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selfmanaged-linux
+          path: |
+            dist-electron/*.AppImage
+            dist-electron/*.deb
+            dist-electron/*.pacman
+            dist-electron/latest-linux.yml
+
+  # Pop!_OS-Basis: echtes apt-Install inkl. Abhaengigkeiten, dann Start unter
+  # Xvfb gegen einen toten Server -> die App muss hochkommen und die
+  # Fallback-Seite laden (startup.log). Gleicher Lauf prueft das AppImage.
+  smoke-ubuntu:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: selfmanaged-linux
+          path: pkg
+
+      - name: .deb installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb ./pkg/*.deb
+          test -x /usr/bin/selfmanaged || ls -la /opt/SelfManaged
+          ls /usr/share/applications | grep -i selfmanaged
+          ls -la /opt/SelfManaged/chrome-sandbox
+
+      - name: .deb starten (Smoke)
+        run: |
+          TM_DESKTOP_URL=http://127.0.0.1:9 xvfb-run -a timeout 30s selfmanaged || true
+          LOG=$(ls ~/.config/*/startup.log | head -1)
+          cat "$LOG"
+          grep -q "start pid=" "$LOG"
+          grep -q "did-fail-load" "$LOG"
+
+      - name: AppImage starten (Smoke)
+        run: |
+          rm -rf ~/.config/selfmanaged-electron
+          chmod +x pkg/*.AppImage
+          TM_DESKTOP_URL=http://127.0.0.1:9 xvfb-run -a timeout 30s pkg/*.AppImage --appimage-extract-and-run --no-sandbox || true
+          LOG=$(ls ~/.config/*/startup.log | head -1)
+          cat "$LOG"
+          grep -q "start pid=" "$LOG"
+
+  # Omarchy-Basis: frisches Arch, pacman loest die Paket-Abhaengigkeiten aus
+  # den offiziellen Repos auf (fehlt eine, scheitert -U) — dann Start-Smoke.
+  # Im Container laeuft alles als root, daher --no-sandbox nur hier.
+  smoke-arch:
+    needs: build
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Basis aktualisieren
+        run: pacman -Syu --noconfirm xorg-server-xvfb xorg-xauth
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: selfmanaged-linux
+          path: pkg
+
+      - name: .pacman installieren
+        run: |
+          pacman -U --noconfirm pkg/*.pacman
+          ls /usr/share/applications | grep -i selfmanaged
+          command -v selfmanaged || ls -la /opt/SelfManaged
+
+      - name: .pacman starten (Smoke)
+        run: |
+          BIN=$(command -v selfmanaged || echo /opt/SelfManaged/selfmanaged)
+          TM_DESKTOP_URL=http://127.0.0.1:9 xvfb-run -a timeout 30s "$BIN" --no-sandbox || true
+          LOG=$(ls ~/.config/*/startup.log | head -1)
+          cat "$LOG"
+          grep -q "start pid=" "$LOG"
+          grep -q "did-fail-load" "$LOG"
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [smoke-ubuntu, smoke-arch]
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: selfmanaged-linux
+          path: pkg
+
+      # Das Release legt desktop-exe.yml (Windows) fuer denselben Tag an —
+      # inkl. make_latest, auf das electron-updater angewiesen ist. Erst
+      # darauf warten, dann anhaengen: zwei Workflows, die gleichzeitig ein
+      # Release anlegen, wuerden kollidieren. Kommt keins, legen wir es an.
+      - name: Pakete an das Release haengen
+        run: |
+          for i in $(seq 1 30); do
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && break
+            echo "Warte auf Release $TAG ($i/30)…"; sleep 30
+          done
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --generate-notes --latest
+          fi
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber pkg/*
