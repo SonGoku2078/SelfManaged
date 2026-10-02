@@ -63,9 +63,13 @@ export const dateKey = (d: Date) =>
     d.getDate()
   ).padStart(2, '0')}`;
 
-// Manual "Heute" flag: only counts on the day it was set (expires overnight).
+// Manual "Heute" flag: active from the day it was set until the task is done
+// or the flag is removed — it carries over midnight (#112; was: expired
+// overnight, so postponed "today" work vanished from Heute). A flag planned
+// for a future day (MCP task_planen) only starts counting on that day.
+// YYYY-MM-DD keys compare correctly as strings.
 export const isTodayFlagActive = (task: Task, now = new Date()): boolean =>
-  task.todayDate != null && task.todayDate === dateKey(now);
+  !!task.todayDate && task.todayDate <= dateKey(now);
 
 export const isOverdue = (task: Task) =>
   !!task.dueDate && !task.completed && task.dueDate < startOfDay(new Date());
@@ -318,11 +322,19 @@ export const selectVisibleTasks = (
     }
     case 'today': {
       const now = new Date();
-      // Today = the day's agenda: due today OR manually pinned via the ☀️ Heute
-      // flag (expires overnight). Overdue lives in Priorität.
-      result = result.filter(
-        (t) => (t.dueDate && isSameDay(t.dueDate, now)) || isTodayFlagActive(t, now)
-      );
+      // Today = the day's agenda: due today OR pinned via the ☀️ Heute flag
+      // (carries over until done, #112). Overdue lives in Priorität.
+      result = result.filter((t) => {
+        if (t.dueDate && isSameDay(t.dueDate, now)) return true;
+        if (!isTodayFlagActive(t, now)) return false;
+        // Done tasks only if pinned or finished today — not every old pin
+        // ever completed (the Erledigt block would fill with history).
+        return (
+          !t.completed ||
+          t.todayDate === dateKey(now) ||
+          (!!t.completedAt && isSameDay(new Date(t.completedAt), now))
+        );
+      });
       break;
     }
     case 'search':

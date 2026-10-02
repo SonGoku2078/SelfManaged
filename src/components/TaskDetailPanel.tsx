@@ -383,7 +383,7 @@ export default function TaskDetailPanel({ task, bulkSelectedIds }: TaskDetailPan
               title={
                 isImplicitToday(task)
                   ? 'Heute fällig — erscheint automatisch in Heute'
-                  : 'Für heute vormerken (verfällt über Nacht)'
+                  : 'Für heute vormerken (bleibt, bis erledigt oder entfernt)'
               }
             >
               ☀️ Heute
