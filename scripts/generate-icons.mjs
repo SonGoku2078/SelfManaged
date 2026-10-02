@@ -143,6 +143,9 @@ for (const size of ICO_SIZES) {
   icoEntries.push({ size, png: await renderPng(page, svg(size, size, tileBody), size, size) });
 }
 write('public/icon.ico', buildIco(icoEntries));
+// Linux (deb/pacman/AppImage): electron-builder build.linux.icon erwartet ein
+// grosses PNG; daraus erzeugt es die hicolor-Groessen selbst.
+write('public/icon-512.png', await renderPng(page, svg(512, 512, tileBody), 512, 512));
 
 // Android: Launcher-Icons je Dichte
 for (const [density, launcher, fg] of DENSITIES) {

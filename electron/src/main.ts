@@ -10,8 +10,10 @@ import { autoUpdater } from 'electron-updater';
 //   1. TM_DESKTOP_URL  — full URL override (tests/power users)
 //   2. TM_DESKTOP_PORT — 127.0.0.1:<port> (E2E against the dev backend)
 //   3. userData/config.json { "serverUrl": … } — set in-app (#62), persisted
-//   4. default: prod server http://192.168.8.50:3001 (packaged) / vite :5173 (dev)
-const DEFAULT_URL_PACKAGED = 'http://192.168.8.50:3001';
+//   4. default: PROD Appwrite site (packaged) / vite :5173 (dev). Was the old
+//      LAN server 192.168.8.50:3001 — fresh installs (e.g. Linux, #110) then
+//      started on the fallback page instead of the app.
+const DEFAULT_URL_PACKAGED = 'https://selfmanaged-prod-6aaa45fb.appwrite.network';
 const DEFAULT_URL_DEV = 'http://127.0.0.1:5173';
 const POLL_MS = 2000;
 
@@ -42,6 +44,10 @@ process.on('uncaughtException', (err) => {
 
 // E2E isolation: private userData also scopes config + single-instance lock.
 if (process.env.TM_USER_DATA_DIR) app.setPath('userData', process.env.TM_USER_DATA_DIR);
+
+// Linux (#110): native Wayland where available (Omarchy/Hyprland, GNOME,
+// COSMIC) instead of blurry XWayland scaling; falls back to X11 otherwise.
+if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 
 // ── Persisted config (#62) ────────────────────────────────────────────────────
 const configPath = (): string => path.join(app.getPath('userData'), 'config.json');
@@ -330,6 +336,10 @@ function createWindow(): BrowserWindow {
     title: 'SelfManaged',
     // Automated tests run the window invisibly so they never pop up on the desktop.
     show: !process.env.TM_E2E_HIDDEN,
+    // Linux docks/taskbars take the window icon from here (Windows uses the EXE icon).
+    ...(process.platform === 'linux' && app.isPackaged
+      ? { icon: path.join(process.resourcesPath, 'icon.png') }
+      : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
