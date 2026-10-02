@@ -6,8 +6,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Ringtone } from './ringtone';
 import type { Task } from './types';
 import { isSameDay } from './selectors';
-
-const SUMMARY_ID = 900001;
+import { buildDailySummaries } from './dailySummary';
 const CHANNEL_ID = 'rem_custom';
 
 export interface ReminderPrefs {
@@ -122,22 +121,21 @@ export async function scheduleReminders(tasks: Task[], prefs: ReminderPrefs): Pr
       });
     }
 
-    // Bei genau 1 fälligem Task Namen zeigen + Tap-Deeplink (extra.taskId, via
-    // onReminderTap) wie bei den Einzel-Remindern oben. Bei 0/>1 Tasks bleibt
-    // der Zähltext ohne Deeplink, weil dort kein Task eindeutig zuordenbar ist.
-    const single = dueToday.length === 1 ? dueToday[0] : null;
-    notifications.push({
-      id: SUMMARY_ID,
-      title: single ? `📋 ${single.title}` : '📋 SelfManaged',
-      body: single
-        ? 'Heute fällig — antippen für Details'
-        : dueToday.length
-          ? `${dueToday.length} Aufgaben heute fällig`
-          : 'Heute keine fälligen Aufgaben 🎉',
-      channelId,
-      ...(single ? { extra: { taskId: single.id } } : {}),
-      schedule: { on: { hour: 8, minute: 0 }, allowWhileIdle: true },
-    });
+    // 08:00-Übersicht (#116): je Morgen eine eigene Meldung mit den Namen der
+    // Aufgaben DIESES Tages (fällig oder ☀️), statt einer täglichen
+    // Wiederholung mit dem Zähltext vom letzten Sync. 1 Task → Tap öffnet ihn;
+    // mehrere → Tap öffnet die App (startet in Heute, #114).
+    for (const s of buildDailySummaries(tasks, now)) {
+      notifications.push({
+        id: s.id,
+        title: s.title,
+        body: s.body,
+        ...(s.largeBody ? { largeBody: s.largeBody } : {}),
+        channelId,
+        ...(s.taskId ? { extra: { taskId: s.taskId } } : {}),
+        schedule: { at: s.at, allowWhileIdle: true },
+      });
+    }
 
     await LocalNotifications.schedule({ notifications });
   } catch {

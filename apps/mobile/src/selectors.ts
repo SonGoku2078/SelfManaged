@@ -39,21 +39,22 @@ export const mobileDoneThisWeek = (tasks: Task[]): Task[] => {
     .sort((a, b) => +(b.completedAt as Date) - +(a.completedAt as Date));
 };
 
-// Heute: open tasks due today OR manually pinned via the ☀️ Heute flag
-// (expires overnight), sorted by due date (undated pins last).
-export const mobileToday = (tasks: Task[]): Task[] => {
-  const now = new Date();
-  return tasks
+// Heute on a given day: open tasks due that day OR pinned via the ☀️ Heute
+// flag (carries over until done, #112), sorted by due date (undated pins
+// last). Shared by the Heute tab and the 08:00 summary for future days.
+export const mobileAgenda = (tasks: Task[], day: Date): Task[] =>
+  tasks
     .filter(
       (t) =>
         root(t) &&
         !t.completed &&
-        ((t.dueDate && isSameDay(t.dueDate, now)) || isTodayFlagActive(t, now))
+        ((t.dueDate && isSameDay(t.dueDate, day)) || isTodayFlagActive(t, day))
     )
     .sort(
       (a, b) => (a.dueDate ? +a.dueDate : Infinity) - (b.dueDate ? +b.dueDate : Infinity)
     );
-};
+
+export const mobileToday = (tasks: Task[]): Task[] => mobileAgenda(tasks, new Date());
 
 // Completed today — shown collapsed at the bottom of the Heute tab.
 export const mobileDoneToday = (tasks: Task[]): Task[] => {
