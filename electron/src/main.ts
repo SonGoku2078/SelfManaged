@@ -10,8 +10,10 @@ import { autoUpdater } from 'electron-updater';
 //   1. TM_DESKTOP_URL  — full URL override (tests/power users)
 //   2. TM_DESKTOP_PORT — 127.0.0.1:<port> (E2E against the dev backend)
 //   3. userData/config.json { "serverUrl": … } — set in-app (#62), persisted
-//   4. default: prod server http://192.168.8.50:3001 (packaged) / vite :5173 (dev)
-const DEFAULT_URL_PACKAGED = 'http://192.168.8.50:3001';
+//   4. default: PROD Appwrite site (packaged) / vite :5173 (dev). Was the old
+//      LAN server 192.168.8.50:3001 — fresh installs (e.g. Linux, #110) then
+//      started on the fallback page instead of the app.
+const DEFAULT_URL_PACKAGED = 'https://selfmanaged-prod-6aaa45fb.appwrite.network';
 const DEFAULT_URL_DEV = 'http://127.0.0.1:5173';
 const POLL_MS = 2000;
 
