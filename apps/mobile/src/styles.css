@@ -70,22 +70,6 @@ body {
   background: var(--hover-bg);
   color: var(--text-secondary);
 }
-/* Sync status banners. The two pending variants are <button>s (tap = sync now). */
-.m-sync-banner,
-.m-pending-offline {
-  flex-shrink: 0;
-  display: block; width: 100%; border: none; appearance: none; cursor: pointer;
-  color: #fff; font-size: 12px; text-align: center; padding: 6px 8px;
-}
-/* Online + draining the queue. */
-.m-sync-banner { background: #2e7d32; }
-/* Offline but local changes are queued — auto-syncs when back online. */
-.m-pending-offline { background: #d97706; font-weight: 600; }
-.m-pending-offline:active { background: #b45309; }
-.m-offline-banner {
-  flex-shrink: 0;
-  background: #b26a00; color: #fff; font-size: 12px; text-align: center; padding: 4px 8px;
-}
 /* New version available → tappable call-to-action. */
 .m-update-banner {
   flex-shrink: 0;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
-import { getBaseUrl, setBaseUrl, normalizeBaseUrl, flushOutbox } from '../api';
+import { getBaseUrl, setBaseUrl, normalizeBaseUrl, flushOutbox, outboxOnChange } from '../api';
 import { IS_APPWRITE_PROD } from '../../../../src/appwrite/client';
 import { checkForUpdate, openApk, APP_VERSION } from '../update';
 import { notificationStatus, sendTestNotification } from '../notifications';
@@ -24,6 +24,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [url, setUrl] = useState(getBaseUrl() || 'http://192.168.8.50:3001');
   const [status, setStatus] = useState<string>('');
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(0);
+  useEffect(() => outboxOnChange(setPending), []);
   const [testStatus, setTestStatus] = useState<string>('');
   const [testing, setTesting] = useState(false);
   const swipe = useSwipeDown(onClose);
@@ -289,7 +291,10 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
         <button className="m-btn-ghost" onClick={syncNow} disabled={busy}>↻ Jetzt synchronisieren</button>
         <div className="m-settings-hint">
-          Läuft automatisch, sobald wieder eine Verbindung besteht — dieser Knopf erzwingt es sofort.
+          {pending > 0
+            ? `${pending} Änderung(en) warten noch auf die Synchronisierung. `
+            : 'Alles synchronisiert. '}
+          Läuft automatisch im Hintergrund, sobald eine Verbindung besteht — dieser Knopf erzwingt es sofort.
         </div>
 
         <label className="m-toggle">
