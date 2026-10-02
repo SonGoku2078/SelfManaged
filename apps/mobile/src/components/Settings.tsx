@@ -246,17 +246,17 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           <span className={notifMsg.startsWith('✓') ? 'm-ok' : notifMsg.startsWith('✕') ? 'm-fail' : ''}>{notifMsg}</span>
         </div>
         <label className="m-field">
-          <span>Vorlaufzeit — wie lange vorher erinnern?</span>
+          <span>Zusätzliche Erinnerung vorher? (zur Startzeit wird immer erinnert)</span>
           <select
             value={reminderLeadMin}
             onChange={(e) => patchSettings({ reminderLeadMin: Number(e.target.value) })}
           >
-            <option value={0}>Zur Startzeit</option>
-            <option value={5}>5 Minuten vorher</option>
-            <option value={10}>10 Minuten vorher</option>
-            <option value={15}>15 Minuten vorher</option>
-            <option value={30}>30 Minuten vorher</option>
-            <option value={60}>1 Stunde vorher</option>
+            <option value={0}>Nein, nur zur Startzeit</option>
+            <option value={5}>+ 5 Minuten vorher</option>
+            <option value={10}>+ 10 Minuten vorher</option>
+            <option value={15}>+ 15 Minuten vorher</option>
+            <option value={30}>+ 30 Minuten vorher</option>
+            <option value={60}>+ 1 Stunde vorher</option>
           </select>
         </label>
         <label className="m-toggle">

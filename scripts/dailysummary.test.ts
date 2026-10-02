@@ -56,3 +56,31 @@ const big = buildDailySummaries(many, evening)[0];
 assert.equal(big.largeBody!.split('\n').length, 9); assert.ok(big.largeBody!.endsWith('… und 3 weitere'));
 
 console.log('✅ PASS — 08:00-Übersicht: Namen statt Zähler, je Morgen eigener Inhalt, ☀️ zählt mit.');
+
+// ── #118: Erinnerung zur Startzeit, Vorlaufzeit zusätzlich, auch für Folgetage ──
+import { buildTaskReminders } from '../apps/mobile/src/dailySummary';
+{
+  const morning = at(new Date(2026, 9, 2), 8); // Fr 2.10. 08:00
+  const nextDay = addDays(morning, 1);
+  const rem = [
+    task({ title: 'Call', dueDate: at(morning, 0), startMinutes: 9 * 60 + 7 }), // heute 09:07
+    task({ title: 'Morgen', dueDate: at(nextDay, 0), startMinutes: 9 * 60 + 7 }), // morgen 09:07
+    task({ title: 'Vorbei', dueDate: at(morning, 0), startMinutes: 7 * 60 }), // heute 07:00 — vorbei
+    task({ title: 'Ohne Zeit', dueDate: at(morning, 0) }),
+    task({ title: 'Erledigt', dueDate: at(morning, 0), startMinutes: 10 * 60, completed: true }),
+    task({ title: 'Weit weg', dueDate: addDays(morning, 30), startMinutes: 10 * 60 }),
+  ];
+  const noLead = buildTaskReminders(rem, 0, morning);
+  assert.deepEqual(noLead.map((r) => [r.title, r.at.getHours(), r.at.getMinutes(), r.at.getDate()]),
+    [['⏰ Call', 9, 7, 2], ['⏰ Morgen', 9, 7, 3]], 'zur Startzeit 09:07, heute + morgen; vergangene/ohne Zeit/erledigte/ferne nicht');
+  assert.ok(noLead.every((r) => r.body.startsWith('Jetzt fällig')));
+
+  const lead = buildTaskReminders(rem, 15, morning);
+  const call = lead.filter((r) => r.title === '⏰ Call').map((r) => `${r.at.getHours()}:${r.at.getMinutes()}`);
+  assert.deepEqual(call.sort(), ['8:52', '9:7'], 'Vorlaufzeit 15 Min: 08:52 ZUSÄTZLICH zu 09:07');
+  assert.equal(new Set(lead.map((r) => r.id)).size, lead.length, 'eindeutige IDs');
+  // Startzeit in < Vorlaufzeit: frühe Erinnerung entfällt, die zur Startzeit bleibt.
+  const soon = buildTaskReminders([task({ title: 'Gleich', dueDate: at(morning, 0), startMinutes: 8 * 60 + 5 })], 15, morning);
+  assert.deepEqual(soon.map((r) => r.body), ['Jetzt fällig (08:05)']);
+  console.log('✅ PASS — Erinnerungen: zur Startzeit immer, Vorlaufzeit zusätzlich, Folgetage vorgeplant.');
+}
