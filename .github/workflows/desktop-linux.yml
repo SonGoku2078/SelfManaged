@@ -71,6 +71,24 @@ jobs:
         working-directory: electron
         run: npx tsc && npx electron-builder --linux --x64 --publish never
 
+      # electron-builder 24 traegt das .pacman nicht in latest-linux.yml ein —
+      # electron-updaters PacmanUpdater (Omarchy) faende dann kein Update.
+      # Eintrag im selben Format (sha512 base64 + size) nachtragen.
+      - name: .pacman in den Update-Feed aufnehmen
+        run: |
+          node -e "
+            const fs = require('fs'), crypto = require('crypto');
+            const dir = 'dist-electron', feed = dir + '/latest-linux.yml';
+            const file = fs.readdirSync(dir).find((f) => f.endsWith('.pacman'));
+            let yml = fs.readFileSync(feed, 'utf8');
+            if (!file || yml.includes(file)) process.exit(0);
+            const buf = fs.readFileSync(dir + '/' + file);
+            const sha512 = crypto.createHash('sha512').update(buf).digest('base64');
+            const entry = '  - url: ' + file + '\n    sha512: ' + sha512 + '\n    size: ' + buf.length + '\n';
+            yml = yml.replace(/^path:/m, entry + 'path:');
+            fs.writeFileSync(feed, yml);
+          "
+
       - name: Update-Feed pruefen
         run: |
           cat dist-electron/latest-linux.yml
