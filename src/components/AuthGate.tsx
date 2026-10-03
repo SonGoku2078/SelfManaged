@@ -9,8 +9,16 @@ import './AuthGate.css';
 
 type State = 'checking' | 'signed-out' | 'signed-in';
 
+// Local data present → this device was signed in before (logout wipes the
+// cache). Start on it immediately and validate the session in the background:
+// waiting for account.get() stalled every cold start (e.g. Android share →
+// SelfManaged) for seconds on the "Session wird geprüft" screen.
+const hasLocalData = () => !!loadSnapshot()?.tasks?.length;
+
 export default function AuthGate({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<State>(IS_APPWRITE_PROD ? 'checking' : 'signed-in');
+  const [state, setState] = useState<State>(() =>
+    !IS_APPWRITE_PROD || hasLocalData() ? 'signed-in' : 'checking'
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -29,6 +37,8 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!IS_APPWRITE_PROD) return;
     let active = true;
+    // Local-first: hydrate the cached tasks now; loadAll syncs once online.
+    if (hasLocalData()) void loadData();
     account.get()
       .then(async () => {
         if (!active) return;
@@ -45,6 +55,8 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           setState('signed-in');
           await loadData();
         } else {
+          // The local-first load ran without a session — reload after login.
+          loadingStarted.current = false;
           setState('signed-out');
         }
       });

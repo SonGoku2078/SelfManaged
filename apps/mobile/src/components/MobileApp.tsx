@@ -22,6 +22,7 @@ import { checkForUpdate, openApk, type UpdateInfo } from '../update';
 import { consumeSharedIntent, onShareReceived, type SharedPayload } from '../shareTarget';
 import { ensureNotificationPermission, scheduleReminders, onReminderTap } from '../notifications';
 import { publishWidgetData } from '../widgetBridge';
+import { revealTask } from '../reveal';
 
 const TAB_TITLE: Record<string, string> = {
   projekte: 'Projekte',
@@ -223,7 +224,23 @@ export default function MobileApp() {
       )}
       {overlay === 'settings' && <Settings onClose={nav.back} />}
       {overlay === 'search' && <Search onOpenTask={openTask} onClose={nav.back} />}
-      {share && <ShareCapture payload={share} onClose={() => setShare(null)} />}
+      {share && (
+        <ShareCapture
+          payload={share}
+          onClose={() => setShare(null)}
+          onSaved={(task) => {
+            setShare(null);
+            // Show the capture where it landed — otherwise an Inbox task
+            // shared while on Heute is simply invisible.
+            externalNavAt.current = Date.now();
+            if (task.todayDate) changeTab('today');
+            else if (task.thisWeek) changeTab('nextweek');
+            else if (task.projectId) openProject(task.projectId);
+            else changeTab('inbox');
+            revealTask(task.id);
+          }}
+        />
+      )}
     </div>
   );
 }

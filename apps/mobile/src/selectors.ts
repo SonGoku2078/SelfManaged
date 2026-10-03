@@ -22,9 +22,13 @@ export { selectPriorityTasks, isInNextWeekWindow, isOverdue, isTodayFlagActive, 
 
 const root = (t: Task) => !t.parentId; // hide subtasks from the flat mobile lists
 
-// Inbox: open tasks with no project.
+// Newest first — a task just created lands on top of the list, independent of
+// the store's array order (desktop "add to top" setting, server reload order).
+export const newestFirst = (a: Task, b: Task): number => +b.createdAt - +a.createdAt;
+
+// Inbox: open tasks with no project, newest on top.
 export const mobileInbox = (tasks: Task[]): Task[] =>
-  tasks.filter((t) => root(t) && !t.completed && !t.projectId);
+  tasks.filter((t) => root(t) && !t.completed && !t.projectId).sort(newestFirst);
 
 // Next Action: top-5 by ⭐ > priority > due date.
 export const mobileNextAction = (tasks: Task[]): Task[] =>
@@ -54,7 +58,10 @@ export const mobileAgenda = (tasks: Task[], day: Date): Task[] =>
       (a, b) => (a.dueDate ? +a.dueDate : Infinity) - (b.dueDate ? +b.dueDate : Infinity)
     );
 
-export const mobileToday = (tasks: Task[]): Task[] => mobileAgenda(tasks, new Date());
+// The Heute tab lists the newest task first so a fresh capture is on top and
+// visible right away (the 08:00 summary keeps mobileAgenda's due-date order).
+export const mobileToday = (tasks: Task[]): Task[] =>
+  mobileAgenda(tasks, new Date()).sort(newestFirst);
 
 // Completed today — shown collapsed at the bottom of the Heute tab.
 export const mobileDoneToday = (tasks: Task[]): Task[] => {
@@ -86,8 +93,9 @@ export const mobileNextWeek = (tasks: Task[]): NextWeekGroup[] => {
     return isInNextWeekWindow(t) || t.thisWeek === true;
   });
 
+  // Same due date (or none, e.g. a fresh 🗓️ capture) → newest on top.
   const byDue = (a: Task, b: Task) =>
-    (a.dueDate ? +a.dueDate : Infinity) - (b.dueDate ? +b.dueDate : Infinity);
+    (a.dueDate ? +a.dueDate : Infinity) - (b.dueDate ? +b.dueDate : Infinity) || newestFirst(a, b);
 
   const groups: NextWeekGroup[] = [
     { key: 'overdue', label: 'Überfällig', tasks: [] },

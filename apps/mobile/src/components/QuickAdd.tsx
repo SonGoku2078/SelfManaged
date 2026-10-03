@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { parseQuickAdd } from '../quickParse';
 import { dateKey } from '../selectors';
 import { listenOnce } from '../voice';
+import { revealTask } from '../reveal';
 import type { MobileTab } from './Navigation';
 
 // Quick-add for the flat list tabs. Mirrors the desktop: the active view seeds
@@ -27,7 +28,7 @@ export default function QuickAdd({ tab }: { tab: MobileTab }) {
     const categoryIds = parsed.categoryNames
       .map((n) => categories.find((c) => c.name.toLowerCase() === n.toLowerCase())?.id)
       .filter((x): x is string => !!x);
-    addTask({
+    const task = addTask({
       title: parsed.title || raw,
       projectId,
       categoryIds,
@@ -36,6 +37,7 @@ export default function QuickAdd({ tab }: { tab: MobileTab }) {
       starred: tab === 'nextaction',
     });
     setTitle('');
+    revealTask(task.id);
   };
 
   // Diktat füllt nur das Feld (AC-3: Sichtkontrolle vor dem Anlegen) —
