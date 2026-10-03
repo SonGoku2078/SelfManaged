@@ -222,6 +222,12 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .m-row { transition: none; }
 }
+/* Freshly created task: brief highlight after it was scrolled into view. */
+.m-row.m-row-new { animation: m-row-new 1.8s ease-out; }
+@keyframes m-row-new {
+  0%, 40% { background: var(--accent-soft); border-color: var(--accent); }
+  100% { background: var(--card-bg); border-color: var(--border-light); }
+}
 .m-check { width: 24px; height: 24px; flex-shrink: 0; accent-color: var(--accent); }
 .m-prio { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .m-prio-high { background: #e5484d; }
@@ -539,3 +545,13 @@ body {
   font-family: inherit; font-size: 15px; cursor: pointer; border-radius: 8px;
 }
 .m-share-projitem.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* Share sheet: ☀️ Heute / 🗓️ Next Week / ★ Next Action toggles. */
+.m-share-flags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.m-share-flag {
+  flex: 1 1 auto; min-height: 44px; padding: 8px 12px;
+  border: 1px solid var(--border-light); border-radius: 22px;
+  background: var(--card-bg); color: var(--text-primary);
+  font-family: inherit; font-size: 15px; cursor: pointer;
+}
+.m-share-flag.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.m-share-flag:disabled { opacity: 0.8; cursor: default; }

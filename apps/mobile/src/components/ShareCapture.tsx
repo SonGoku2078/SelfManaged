@@ -3,11 +3,24 @@ import { useStore } from '../store';
 import { parseQuickAdd } from '../quickParse';
 import { useSwipeDown } from '../gestures';
 import { deriveShareFields } from '../shareFields';
+import { dateKey } from '../selectors';
 import type { SharedPayload } from '../shareTarget';
+import type { Task } from '../types';
 
 // Quick-capture sheet shown when content is shared into the app. The link goes
 // into the note; the project defaults to Inbox and can be searched/picked.
-export default function ShareCapture({ payload, onClose }: { payload: SharedPayload; onClose: () => void }) {
+// ☀️ Heute / 🗓️ Next Week / ★ Next Action can be toggled like in the desktop.
+// Saving is purely local (store + outbox) and closes at once; the caller then
+// shows the new task in the list it landed in.
+export default function ShareCapture({
+  payload,
+  onClose,
+  onSaved,
+}: {
+  payload: SharedPayload;
+  onClose: () => void;
+  onSaved: (task: Task) => void;
+}) {
   const projects = useStore((s) => s.projects);
   const categories = useStore((s) => s.categories);
   const addTask = useStore((s) => s.addTask);
@@ -18,7 +31,9 @@ export default function ShareCapture({ payload, onClose }: { payload: SharedPayl
   const [description, setDescription] = useState(initial.description);
   const [projectChoice, setProjectChoice] = useState<string>(''); // '' = Inbox / follow #tag
   const [projQuery, setProjQuery] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [today, setToday] = useState(false);
+  const [thisWeek, setThisWeek] = useState(false);
+  const [starred, setStarred] = useState(false);
   const swipe = useSwipeDown(onClose);
 
   const visibleProjects = projects
@@ -44,14 +59,17 @@ export default function ShareCapture({ payload, onClose }: { payload: SharedPayl
       .map((n) => categories.find((c) => c.name.toLowerCase() === n.toLowerCase())?.id)
       .filter((x): x is string => !!x);
 
-    addTask({
+    const task = addTask({
       title: parsed.title || 'Geteilte Aufgabe',
       description,
       projectId,
       categoryIds,
+      todayDate: today ? dateKey(new Date()) : null,
+      thisWeek,
+      // Heute / Next Week imply Next Action anyway (addTask).
+      starred: starred || today || thisWeek,
     });
-    setSaved(true);
-    setTimeout(onClose, 700);
+    onSaved(task);
   };
 
   return (
@@ -62,67 +80,89 @@ export default function ShareCapture({ payload, onClose }: { payload: SharedPayl
           <button className="m-modal-x" onClick={onClose}>✕</button>
         </div>
 
-        {saved ? (
-          <div className="m-ok" style={{ padding: '16px 4px' }}>✓ Aufgabe erstellt</div>
-        ) : (
-          <>
-            <label className="m-field">
-              <span>Titel</span>
-              <input
-                value={title}
-                placeholder="Titel… (#Projekt @Kategorie)"
-                autoFocus
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </label>
+        <label className="m-field">
+          <span>Titel</span>
+          <input
+            value={title}
+            placeholder="Titel… (#Projekt @Kategorie)"
+            autoFocus
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
 
-            <div className="m-field">
-              <span>Projekt: <strong>{chosenName}</strong></span>
-              <input
-                className="m-share-projsearch"
-                placeholder="Projekt suchen… (leer = Inbox)"
-                value={projQuery}
-                onChange={(e) => setProjQuery(e.target.value)}
-              />
-              <div className="m-share-projlist">
-                <button
-                  className={`m-share-projitem ${projectChoice === '' ? 'on' : ''}`}
-                  onClick={() => { setProjectChoice(''); setProjQuery(''); }}
-                >
-                  📥 Inbox (kein Projekt)
-                </button>
-                {filteredProjects.map((p) => (
-                  <button
-                    key={p.id}
-                    className={`m-share-projitem ${projectChoice === p.id ? 'on' : ''}`}
-                    onClick={() => { setProjectChoice(p.id); setProjQuery(''); }}
-                  >
-                    {p.kind === 'area' ? '∞ ' : '● '}{p.name}
-                  </button>
-                ))}
-                {filteredProjects.length === 0 && (
-                  <p className="m-settings-hint">Kein Projekt gefunden.</p>
-                )}
-              </div>
-            </div>
+        <div className="m-share-flags">
+          <button
+            type="button"
+            className={`m-share-flag ${today ? 'on' : ''}`}
+            aria-pressed={today}
+            onClick={() => setToday((v) => !v)}
+          >
+            ☀️ Heute
+          </button>
+          <button
+            type="button"
+            className={`m-share-flag ${thisWeek ? 'on' : ''}`}
+            aria-pressed={thisWeek}
+            onClick={() => setThisWeek((v) => !v)}
+          >
+            🗓️ Next Week
+          </button>
+          <button
+            type="button"
+            className={`m-share-flag ${starred || today || thisWeek ? 'on' : ''}`}
+            aria-pressed={starred || today || thisWeek}
+            disabled={today || thisWeek}
+            onClick={() => setStarred((v) => !v)}
+          >
+            ★ Next Action
+          </button>
+        </div>
 
-            <label className="m-field">
-              <span>Beschreibung</span>
-              <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
-            </label>
-
-            <div className="m-modal-foot">
-              <button className="m-btn-del" onClick={onClose}>Abbrechen</button>
+        <div className="m-field">
+          <span>Projekt: <strong>{chosenName}</strong></span>
+          <input
+            className="m-share-projsearch"
+            placeholder="Projekt suchen… (leer = Inbox)"
+            value={projQuery}
+            onChange={(e) => setProjQuery(e.target.value)}
+          />
+          <div className="m-share-projlist">
+            <button
+              className={`m-share-projitem ${projectChoice === '' ? 'on' : ''}`}
+              onClick={() => { setProjectChoice(''); setProjQuery(''); }}
+            >
+              📥 Inbox (kein Projekt)
+            </button>
+            {filteredProjects.map((p) => (
               <button
-                className="m-btn-save"
-                onClick={save}
-                disabled={!title.trim() && !description.trim()}
+                key={p.id}
+                className={`m-share-projitem ${projectChoice === p.id ? 'on' : ''}`}
+                onClick={() => { setProjectChoice(p.id); setProjQuery(''); }}
               >
-                Speichern
+                {p.kind === 'area' ? '∞ ' : '● '}{p.name}
               </button>
-            </div>
-          </>
-        )}
+            ))}
+            {filteredProjects.length === 0 && (
+              <p className="m-settings-hint">Kein Projekt gefunden.</p>
+            )}
+          </div>
+        </div>
+
+        <label className="m-field">
+          <span>Beschreibung</span>
+          <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </label>
+
+        <div className="m-modal-foot">
+          <button className="m-btn-del" onClick={onClose}>Abbrechen</button>
+          <button
+            className="m-btn-save"
+            onClick={save}
+            disabled={!title.trim() && !description.trim()}
+          >
+            Speichern
+          </button>
+        </div>
       </div>
     </div>
   );
