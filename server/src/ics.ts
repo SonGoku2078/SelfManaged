@@ -116,7 +116,7 @@ export function tasksToICS(tasks: IcsTask[], calName = 'SelfManaged Aufgaben'): 
         lines.push(`DTSTART;VALUE=DATE:${fmtDate(due)}`, `DTEND;VALUE=DATE:${fmtDate(nextDay)}`);
       } else {
         const start = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 0, t.startMinutes as number);
-        const end = new Date(start.getTime() + (t.durationMin ?? 60) * 60_000);
+        const end = new Date(start.getTime() + (t.durationMin || 30) * 60_000);
         lines.push(`DTSTART:${toLocalStamp(start)}`, `DTEND:${toLocalStamp(end)}`);
       }
       const rrule = buildRRule(t, allDay);

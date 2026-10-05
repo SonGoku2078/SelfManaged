@@ -41,3 +41,7 @@ export function formatDuration(min: number): string {
   const m = min % 60;
   return `${hWhole}h ${m}m`;
 }
+
+// A timed task without an explicit duration lasts 30 minutes (Nozbe default) —
+// in the week grid and in the ICS calendar feed.
+export const DEFAULT_DURATION_MIN = 30;

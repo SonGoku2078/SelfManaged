@@ -32,3 +32,10 @@ export const settingsApi = {
   patch:  (p: Partial<Settings & { nextTaskNumber: number }>) =>
     apiFetch<Settings>('/api/settings', { method: 'PATCH', body: JSON.stringify(p) }),
 };
+
+// Token-secured ICS feed URL(s) for subscribing from an external calendar
+// (#24). Goes through apiFetch so it works on Appwrite (function execution
+// with the user's JWT) as well as against the LAN server.
+export const calendarFeedApi = {
+  get: () => apiFetch<{ token?: string; baseUrl?: string; urls?: string[] }>('/api/calendar-feed'),
+};
