@@ -6,6 +6,7 @@ import { importFromNozbeApi, mapNozbe, loginNozbe, type NozbeExport } from '../n
 import { playAlarm, startFocusSound, stopFocusSound, unlockAudio } from '../pomodoroSound';
 import { APP_VERSION, BUILD_TIME, apiEnvironment, fetchReleasedVersions, type ReleasedVersions } from '../version';
 import { getBaseUrl } from '../api/client';
+import { calendarFeedApi } from '../api';
 import { copyToClipboard } from '../clipboard';
 import { account, IS_APPWRITE_PROD } from '../appwrite/client';
 import './SettingsView.css';
@@ -758,8 +759,9 @@ function MobileAccessSection() {
   );
 }
 
-// Subscribable ICS feed (issue #24): shows the token-secured calendar URLs so
-// an external calendar (Proton, Thunderbird — same LAN) can subscribe.
+// Subscribable ICS feed (issue #24): shows the token-secured calendar URL so
+// an external calendar (Proton, Google, Outlook, Thunderbird) can subscribe.
+// On Appwrite the feed is a public HTTPS function — reachable from anywhere.
 function CalendarFeedSection() {
   const [urls, setUrls] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -767,8 +769,7 @@ function CalendarFeedSection() {
   const [copyFailed, setCopyFailed] = useState<string | null>(null);
   useEffect(() => {
     let on = true;
-    fetch('/api/calendar-feed')
-      .then((r) => r.json())
+    calendarFeedApi.get()
       .then((d) => { if (on) { setUrls(Array.isArray(d.urls) ? d.urls : []); setLoaded(true); } })
       .catch(() => { if (on) setLoaded(true); });
     return () => { on = false; };
@@ -785,14 +786,15 @@ function CalendarFeedSection() {
     <section className="settings-section">
       <h3 className="settings-heading">📆 Kalender-Feed (ICS)</h3>
       <p className="settings-hint">
-        Diese URL in Proton Kalender / Thunderbird als Abonnement eintragen („Kalender
-        abonnieren" / „Im Netzwerk"). Das Aktualisierungs-Intervall bestimmt die Kalender-App.
-        Der Link enthält ein geheimes Token — nicht öffentlich teilen.
+        Diese URL im eigenen Kalender als Abonnement eintragen (Proton: „Kalender
+        abonnieren", Google: „Per URL hinzufügen", Outlook: „Aus dem Web abonnieren").
+        Termine mit Uhrzeit dauern ohne Angabe 30 Minuten. Das Aktualisierungs-Intervall
+        bestimmt die Kalender-App. Der Link enthält ein geheimes Token — nicht öffentlich teilen.
       </p>
       {!loaded ? (
         <p className="settings-hint">…</p>
       ) : urls.length === 0 ? (
-        <p className="settings-hint">Feed nicht verfügbar (Server offline?).</p>
+        <p className="settings-hint">Feed nicht verfügbar (offline?).</p>
       ) : (
         <ul className="settings-lan-list">
           {urls.map((u) => (

@@ -2,9 +2,27 @@ import crypto from 'node:crypto';
 import { Client, Query, TablesDB } from 'node-appwrite';
 
 const DATABASE_ID = 'selfmanaged-prod';
+// Timed tasks without a duration last 30 minutes (Nozbe default).
+export const DEFAULT_DURATION_MIN = 30;
+// The function runs in UTC; the user's day and clock are Swiss. Events carry
+// TZID=Europe/Zurich (+ VTIMEZONE) so every calendar app shows the same time.
+const TZID = 'Europe/Zurich';
 const pad = (n) => String(n).padStart(2, '0');
-const fmtDate = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-const toLocalStamp = (d) => `${fmtDate(d)}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+const zurichParts = new Intl.DateTimeFormat('en-CA', { timeZone: TZID, year: 'numeric', month: '2-digit', day: '2-digit' });
+// Calendar day of a stored dueDate as seen in Zurich → naive UTC-midnight Date
+// used purely for Y/M/D arithmetic (getUTC* below), independent of server TZ.
+const zurichDay = (value) => {
+  const [y, m, d] = zurichParts.format(new Date(value)).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+};
+const fmtDate = (d) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+const toLocalStamp = (d) => `${fmtDate(d)}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+const VTIMEZONE = [
+  'BEGIN:VTIMEZONE', `TZID:${TZID}`,
+  'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19810329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
+  'BEGIN:STANDARD', 'TZOFFSETFROM:+0200', 'TZOFFSETTO:+0100', 'TZNAME:CET', 'DTSTART:19961027T030000', 'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU', 'END:STANDARD',
+  'END:VTIMEZONE',
+];
 const toUtcStamp = (d) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
 const escapeText = (s) => String(s ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 
@@ -33,26 +51,27 @@ function rrule(task, allDay) {
   if (unit === 'month' && task.recurMonthDay === 'first') parts.push('BYMONTHDAY=1');
   if (unit === 'month' && task.recurMonthDay === 'last') parts.push('BYMONTHDAY=-1');
   if (task.recurrenceEnd) {
-    const end = new Date(task.recurrenceEnd);
-    parts.push(`UNTIL=${allDay ? fmtDate(end) : `${fmtDate(end)}T235959`}`);
+    const end = zurichDay(task.recurrenceEnd);
+    // RFC 5545: with a TZID DTSTART, UNTIL must be UTC.
+    parts.push(`UNTIL=${allDay ? fmtDate(end) : `${fmtDate(end)}T235959Z`}`);
   }
   return `RRULE:${parts.join(';')}`;
 }
 
-function tasksToIcs(tasks, projects) {
+export function tasksToIcs(tasks, projects) {
   const projectNames = new Map(projects.map((p) => [p.legacyId, p.name]));
   const events = tasks.filter((t) => t.dueDate).map((task) => {
-    const due = new Date(task.dueDate);
+    const due = zurichDay(task.dueDate);
     const allDay = task.startMinutes == null;
     const updated = new Date(task.updatedAt);
     const lines = ['BEGIN:VEVENT', fold(`UID:${task.legacyId}@selfmanaged`), `DTSTAMP:${toUtcStamp(updated)}`, `LAST-MODIFIED:${toUtcStamp(updated)}`];
     if (allDay) {
-      const next = new Date(due.getFullYear(), due.getMonth(), due.getDate() + 1);
+      const next = new Date(due.getTime() + 86_400_000);
       lines.push(`DTSTART;VALUE=DATE:${fmtDate(due)}`, `DTEND;VALUE=DATE:${fmtDate(next)}`);
     } else {
-      const start = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 0, task.startMinutes);
-      const end = new Date(start.getTime() + (task.durationMin ?? 60) * 60_000);
-      lines.push(`DTSTART:${toLocalStamp(start)}`, `DTEND:${toLocalStamp(end)}`);
+      const start = new Date(due.getTime() + task.startMinutes * 60_000);
+      const end = new Date(start.getTime() + (task.durationMin || DEFAULT_DURATION_MIN) * 60_000);
+      lines.push(`DTSTART;TZID=${TZID}:${toLocalStamp(start)}`, `DTEND;TZID=${TZID}:${toLocalStamp(end)}`);
     }
     const recurrence = rrule(task, allDay);
     if (recurrence) lines.push(recurrence);
@@ -63,7 +82,7 @@ function tasksToIcs(tasks, projects) {
     lines.push('END:VEVENT');
     return lines.join('\r\n');
   });
-  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//SelfManaged//Task Manager//DE', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:SelfManaged Aufgaben', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H', ...events, 'END:VCALENDAR'].join('\r\n') + '\r\n';
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//SelfManaged//Task Manager//DE', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:SelfManaged Aufgaben', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H', `X-WR-TIMEZONE:${TZID}`, ...VTIMEZONE, ...events, 'END:VCALENDAR'].join('\r\n') + '\r\n';
 }
 
 function tokenMatches(expected, received) {

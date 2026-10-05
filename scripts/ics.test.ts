@@ -29,8 +29,8 @@ assert.ok(allDay.includes('DTEND;VALUE=DATE:20260705'), 'all-day DTEND next day'
 const timed = ics({ startMinutes: 570, durationMin: 90 });
 assert.ok(timed.includes('DTSTART:20260704T093000'), 'timed DTSTART');
 assert.ok(timed.includes('DTEND:20260704T110000'), 'timed DTEND');
-// Default duration 60 min.
-assert.ok(ics({ startMinutes: 570 }).includes('DTEND:20260704T103000'), 'default 60min');
+// Default duration 30 min (Nozbe default).
+assert.ok(ics({ startMinutes: 570 }).includes('DTEND:20260704T100000'), 'default 30min');
 
 // RRULE mapping.
 assert.ok(ics({ recurrence: 'weekly' }).includes('RRULE:FREQ=WEEKLY\r\n'), 'weekly');

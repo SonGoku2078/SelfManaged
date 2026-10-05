@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
-import { getBaseUrl, setBaseUrl, normalizeBaseUrl, flushOutbox, outboxOnChange } from '../api';
+import { getBaseUrl, setBaseUrl, normalizeBaseUrl, flushOutbox, outboxOnChange, calendarFeedApi } from '../api';
 import { IS_APPWRITE_PROD } from '../../../../src/appwrite/client';
 import { checkForUpdate, openApk, APP_VERSION } from '../update';
 import { notificationStatus, sendTestNotification } from '../notifications';
@@ -133,16 +133,18 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   };
 
   // ICS calendar feed URL (issue #24) — token-secured, for subscribing from an
-  // external calendar app on the same network.
+  // external calendar app. Via apiFetch so it also works on Appwrite.
   const [feedUrl, setFeedUrl] = useState('');
   const [feedCopied, setFeedCopied] = useState(false);
   useEffect(() => {
-    const base = getBaseUrl();
-    if (!base) return;
-    fetch(`${base}/api/calendar-feed`, { signal: AbortSignal.timeout(5000) })
-      .then((r) => r.json())
-      .then((d) => { if (d?.token) setFeedUrl(`${base}/calendar/${d.token}.ics`); })
+    let on = true;
+    calendarFeedApi.get()
+      .then((d) => {
+        const url = d?.urls?.[0] ?? (d?.token ? `${getBaseUrl()}/calendar/${d.token}.ics` : '');
+        if (on && url) setFeedUrl(url);
+      })
       .catch(() => {});
+    return () => { on = false; };
   }, []);
   const copyFeed = async () => {
     try {
@@ -235,7 +237,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
         {feedUrl && (
           <div className="m-settings-info">
-            Kalender-Feed (ICS) — in Proton/Thunderbird abonnieren:<br />
+            📆 Kalender-Feed (ICS) — im eigenen Kalender abonnieren (Proton, Google, Outlook):<br />
             <code style={{ wordBreak: 'break-all', userSelect: 'all' }}>{feedUrl}</code>
             <button className="m-btn-ghost" onClick={copyFeed}>
               {feedCopied ? '✓ kopiert' : '📋 Link kopieren'}

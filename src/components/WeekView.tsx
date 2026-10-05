@@ -11,6 +11,7 @@ import {
 } from '../selectors';
 import type { Task } from '../types';
 import { readTaskIds } from '../dnd';
+import { DEFAULT_DURATION_MIN } from '../duration';
 import './WeekView.css';
 
 const weekDayLabels = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -212,7 +213,7 @@ export default function WeekView({ mode }: WeekViewProps) {
       updateTask(id, {
         dueDate: new Date(date),
         startMinutes: start,
-        durationMin: t?.durationMin ?? 60,
+        durationMin: t?.durationMin || DEFAULT_DURATION_MIN,
       });
     });
   };
@@ -222,7 +223,7 @@ export default function WeekView({ mode }: WeekViewProps) {
       title: 'Neue Aufgabe',
       dueDate: new Date(date),
       startMinutes,
-      durationMin: startMinutes == null ? null : 60,
+      durationMin: startMinutes == null ? null : DEFAULT_DURATION_MIN,
     });
     selectTaskForEdit(created.id);
   };
@@ -233,7 +234,7 @@ export default function WeekView({ mode }: WeekViewProps) {
     e.stopPropagation();
     suppressClick.current = true;
     const startY = e.clientY;
-    const startDur = task.durationMin ?? 60;
+    const startDur = task.durationMin || DEFAULT_DURATION_MIN;
     const onMove = (ev: MouseEvent) => {
       const deltaMin = ((ev.clientY - startY) / hourHeight) * 60;
       const next = Math.max(snap, Math.round((startDur + deltaMin) / snap) * snap);
@@ -607,7 +608,7 @@ export default function WeekView({ mode }: WeekViewProps) {
               })),
               ...timed.map((t) => {
                 const s = t.startMinutes ?? startHour * 60;
-                return { id: t.id, start: s, end: s + (t.durationMin ?? 60) };
+                return { id: t.id, start: s, end: s + (t.durationMin || DEFAULT_DURATION_MIN) };
               }),
             ]);
             // Inline horizontal placement (overrides the CSS left/right insets).
@@ -727,7 +728,7 @@ export default function WeekView({ mode }: WeekViewProps) {
                 {timed.map((t) => {
                   const start = t.startMinutes ?? startHour * 60;
                   const top = ((start - startHour * 60) / 60) * hourHeight;
-                  const height = Math.max(18, ((t.durationMin ?? 60) / 60) * hourHeight);
+                  const height = Math.max(18, ((t.durationMin || DEFAULT_DURATION_MIN) / 60) * hourHeight);
                   return (
                     <div
                       key={t.id}
