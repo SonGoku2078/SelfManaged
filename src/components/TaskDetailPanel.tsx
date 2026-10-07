@@ -50,6 +50,7 @@ interface TaskDetailPanelProps {
 // Duration parse/format live in a shared util (also used by the mobile app).
 import { parseDuration, formatDuration, minutesToTimeInput, timeInputToMinutes } from '../duration';
 import { fmtFocus } from '../pomodoro';
+import { useDetailLayout, loadSheetFraction, saveSheetFraction, clampSheet } from '../detailSheet';
 import { isEvernoteUrl, DEFAULT_EVERNOTE_TITLE } from '../evernote';
 export { parseDuration, formatDuration };
 
@@ -126,6 +127,48 @@ export default function TaskDetailPanel({ task, bulkSelectedIds }: TaskDetailPan
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       setDetailPanelWidth(clamp(window.innerWidth - ev.clientX));
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // Not enough room on the right → slide in from the bottom instead.
+  const layout = useDetailLayout(width);
+  const [sheetFraction, setSheetFraction] = useState(loadSheetFraction);
+  const sheetHeight = Math.round(window.innerHeight * sheetFraction);
+
+  // Sheet open: pad the task list so its last rows can scroll above the sheet,
+  // and keep the selected row visible above it.
+  useEffect(() => {
+    if (!layout.sheet) return;
+    const root = document.documentElement;
+    root.style.setProperty('--detail-sheet-h', `${sheetHeight}px`);
+    root.classList.add('detail-sheet-open');
+    return () => {
+      root.classList.remove('detail-sheet-open');
+      root.style.removeProperty('--detail-sheet-h');
+    };
+  }, [layout.sheet, sheetHeight]);
+  useEffect(() => {
+    if (!layout.sheet) return;
+    const row = document.querySelector<HTMLElement>('.task-item.selected');
+    const list = row?.closest<HTMLElement>('.task-list');
+    if (!row || !list) return;
+    const sheetTop = window.innerHeight - sheetHeight;
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom > sheetTop - 8) list.scrollBy({ top: rect.bottom - sheetTop + 48, behavior: 'smooth' });
+    // Only when the opened task changes or the sheet appears — not on every drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout.sheet, task.id]);
+
+  const startSheetResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const fractionAt = (y: number) => clampSheet((window.innerHeight - y) / window.innerHeight);
+    const onMove = (ev: MouseEvent) => setSheetFraction(fractionAt(ev.clientY));
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      saveSheetFraction(fractionAt(ev.clientY));
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -280,7 +323,7 @@ export default function TaskDetailPanel({ task, bulkSelectedIds }: TaskDetailPan
 
   return (
     <div
-      className={`task-detail-panel ${fileDragOver ? 'file-drag-over' : ''}`}
+      className={`task-detail-panel ${layout.sheet ? 'detail-sheet' : ''} ${fileDragOver ? 'file-drag-over' : ''}`}
       onPaste={handlePaste}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
@@ -292,13 +335,21 @@ export default function TaskDetailPanel({ task, bulkSelectedIds }: TaskDetailPan
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setFileDragOver(false);
       }}
       onDrop={handleFileDrop}
-      style={{ width }}
+      style={layout.sheet ? { left: layout.left, height: sheetHeight } : { width }}
     >
-      <div
-        className="detail-resize"
-        title="Breite ziehen"
-        onMouseDown={startResize}
-      />
+      {layout.sheet ? (
+        <div
+          className="detail-sheet-resize"
+          title="Höhe ziehen"
+          onMouseDown={startSheetResize}
+        />
+      ) : (
+        <div
+          className="detail-resize"
+          title="Breite ziehen"
+          onMouseDown={startResize}
+        />
+      )}
       <div className="panel-header">
         <h3>
           <span className="detail-number">#{task.number}</span>{' '}
