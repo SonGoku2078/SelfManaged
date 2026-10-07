@@ -894,3 +894,50 @@ a.detail-link-open { text-decoration: none; }
   color: var(--alert-red);
   margin-top: 6px;
 }
+
+/* Not enough room on the right (half-screen window): the detail slides in
+   from the bottom over the lower part of the list; the list stays usable
+   above it. Overrides the narrow-viewport right overlay in App.css. */
+.task-detail-panel.detail-sheet {
+  position: fixed;
+  top: auto;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  z-index: 20;
+  border-left: none;
+  border-top: 1px solid var(--border-light);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.18);
+  animation: detail-sheet-in 0.2s ease-out;
+}
+@keyframes detail-sheet-in {
+  from { transform: translateY(40%); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-detail-panel.detail-sheet { animation: none; }
+}
+/* Grab bar along the top edge to change the sheet height. */
+.detail-sheet-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: row-resize;
+  z-index: 2;
+}
+.detail-sheet-resize::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: var(--border-light);
+}
+.detail-sheet-resize:hover::after { background: var(--accent); }
+.detail-sheet-open .task-list { padding-bottom: var(--detail-sheet-h, 0px); }
