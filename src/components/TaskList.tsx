@@ -248,6 +248,11 @@ export default function TaskList({
             ⏳{task.waitingFor ? ` ${task.waitingFor}` : ''}
           </span>
         )}
+        {!!task.description?.trim() && (
+          <span className="task-comments task-has-desc" title="Hat eine Beschreibung">
+            📜
+          </span>
+        )}
         {(task.comments?.length ?? 0) > 0 && (
           <span
             className="task-comments"

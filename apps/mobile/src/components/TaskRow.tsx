@@ -76,6 +76,7 @@ export default function TaskRow({
           )}
           {task.thisWeek && <span className="m-flag-week" title="Next Week">🗓️</span>}
           {task.recurrence !== 'none' && <span title={task.recurrence}>↻</span>}
+          {!!task.description?.trim() && <span title="Hat eine Beschreibung">📜</span>}
         </div>
       </div>
       <button
