@@ -46,3 +46,43 @@ export function buildOccurrence(
     }));
   return { parent, subs };
 }
+
+// Does the series of an OPEN recurring task have an occurrence on `day`,
+// although its stored dueDate lies before that day? The ICS feed exports the
+// task as an RRULE, so the calendar shows every occurrence — while the app only
+// knows the one stored dueDate. A weekly task left undone since 28.08. showed in
+// Proton on every Friday, but never in Heute. Mirrors the RRULE built in
+// apps/functions/ics/src/main.js + server/src/ics.ts (unit/interval/month-day/UNTIL).
+// Local calendar days; day differences via UTC so DST never shifts them.
+export function recursOn(task: Task, day: Date): boolean {
+  if (task.completed || !task.recurrence || task.recurrence === 'none' || !task.dueDate) return false;
+  const due = task.dueDate;
+  const dayNo = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000;
+  const diff = dayNo(day) - dayNo(due);
+  if (diff <= 0) return false; // on/before the stored date: the dueDate itself decides
+  if (task.recurrenceEnd && dayNo(day) > dayNo(task.recurrenceEnd)) return false;
+  const unit =
+    task.recurrence === 'custom'
+      ? task.recurUnit ?? 'day'
+      : ({ daily: 'day', weekly: 'week', monthly: 'month', yearly: 'year' } as const)[task.recurrence];
+  const n = task.recurrence === 'custom' ? Math.max(1, task.recurInterval ?? 1) : 1;
+  const months = (day.getFullYear() - due.getFullYear()) * 12 + day.getMonth() - due.getMonth();
+  switch (unit) {
+    case 'day':
+      return diff % n === 0;
+    case 'week':
+      return diff % (7 * n) === 0;
+    case 'month': {
+      if (months % n !== 0) return false;
+      const lastOfMonth = new Date(day.getFullYear(), day.getMonth() + 1, 0).getDate();
+      if (task.recurMonthDay === 'first') return day.getDate() === 1;
+      if (task.recurMonthDay === 'last') return day.getDate() === lastOfMonth;
+      // RRULE semantics: months without that date (e.g. the 31st) are skipped.
+      return day.getDate() === due.getDate();
+    }
+    case 'year':
+      return months % (12 * n) === 0 && day.getDate() === due.getDate();
+    default:
+      return false;
+  }
+}

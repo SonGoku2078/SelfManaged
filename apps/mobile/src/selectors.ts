@@ -16,9 +16,10 @@ import {
   applyCompletionHold,
   countsAsToday,
   isImplicitToday,
+  isDueOn,
 } from '../../../src/selectors';
 
-export { selectPriorityTasks, isInNextWeekWindow, isOverdue, isTodayFlagActive, tasksOnDate, addDays, isSameDay, dateKey, startOfWeek, weekDays7, matchesSearch, applyCompletionHold, countsAsToday, isImplicitToday };
+export { selectPriorityTasks, isInNextWeekWindow, isOverdue, isTodayFlagActive, tasksOnDate, addDays, isSameDay, dateKey, startOfWeek, weekDays7, matchesSearch, applyCompletionHold, countsAsToday, isImplicitToday, isDueOn };
 
 const root = (t: Task) => !t.parentId; // hide subtasks from the flat mobile lists
 
@@ -43,7 +44,8 @@ export const mobileDoneThisWeek = (tasks: Task[]): Task[] => {
     .sort((a, b) => +(b.completedAt as Date) - +(a.completedAt as Date));
 };
 
-// Heute on a given day: open tasks due that day OR pinned via the ☀️ Heute
+// Heute on a given day: open tasks due that day (incl. a recurring series
+// hitting that day, #131) OR pinned via the ☀️ Heute
 // flag (carries over until done, #112), sorted by due date (undated pins
 // last). Shared by the Heute tab and the 08:00 summary for future days.
 export const mobileAgenda = (tasks: Task[], day: Date): Task[] =>
@@ -52,7 +54,7 @@ export const mobileAgenda = (tasks: Task[], day: Date): Task[] =>
       (t) =>
         root(t) &&
         !t.completed &&
-        ((t.dueDate && isSameDay(t.dueDate, day)) || isTodayFlagActive(t, day))
+        (isDueOn(t, day) || isTodayFlagActive(t, day))
     )
     .sort(
       (a, b) => (a.dueDate ? +a.dueDate : Infinity) - (b.dueDate ? +b.dueDate : Infinity)

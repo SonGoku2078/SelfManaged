@@ -91,6 +91,7 @@ export type ViewType =
   | 'templates'
   | 'activity'
   | 'completed'
+  | 'recurring'
   | 'reports'
   | 'testreport'
   | 'members'

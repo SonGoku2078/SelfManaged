@@ -1,5 +1,6 @@
 import type { Task, UIState, Priority, Project, Member, Section } from './types';
 import { taskAssigneeIds } from './members';
+import { recursOn } from './recurrence';
 
 const PRIORITY_RANK: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
 
@@ -74,17 +75,61 @@ export const isTodayFlagActive = (task: Task, now = new Date()): boolean =>
 export const isOverdue = (task: Task) =>
   !!task.dueDate && !task.completed && task.dueDate < startOfDay(new Date());
 
+// Steht der Task an `day` an — gespeichertes Faelligkeitsdatum ODER (offener,
+// wiederkehrender Task) ein Serientermin wie im ICS-Kalender, auch wenn das
+// gespeicherte Datum schon zurueckliegt (#131: Weekly Review fehlte in Heute).
+export const isDueOn = (task: Task, day: Date): boolean =>
+  (!!task.dueDate && isSameDay(task.dueDate, day)) || recursOn(task, day);
+
+// Rhythmus eines wiederkehrenden Tasks auf Deutsch ("wöchentlich",
+// "alle 2 Wochen", "monatlich (letzter Tag)") — null bei einmaligen Tasks.
+export const recurrenceLabel = (task: Task): string | null => {
+  if (!task.recurrence || task.recurrence === 'none') return null;
+  const unit = task.recurrence === 'custom' ? task.recurUnit ?? 'day' : ({ daily: 'day', weekly: 'week', monthly: 'month', yearly: 'year' } as const)[task.recurrence];
+  const n = task.recurrence === 'custom' ? Math.max(1, task.recurInterval ?? 1) : 1;
+  const one = { day: 'täglich', week: 'wöchentlich', month: 'monatlich', year: 'jährlich' }[unit];
+  const many = { day: 'Tage', week: 'Wochen', month: 'Monate', year: 'Jahre' }[unit];
+  const base = n === 1 ? one : `alle ${n} ${many}`;
+  if (unit === 'month' && task.recurMonthDay === 'first') return `${base} (1. Tag)`;
+  if (unit === 'month' && task.recurMonthDay === 'last') return `${base} (letzter Tag)`;
+  return base;
+};
+
+// "Daueraufträge" (#131): jede wiederkehrende Serie genau einmal. Abhaken legt
+// eine neue Instanz an — eine Serie sind darum alle Hauptaufgaben mit gleichem
+// Titel im gleichen Projekt. Laufend = es gibt eine offene Instanz (die wird
+// gezeigt, nach nächstem Termin sortiert); beendet = alle erledigt (die zuletzt
+// erledigte wird gezeigt und sinkt als erledigt nach unten).
+export const selectRecurringSeries = (tasks: Task[]): Task[] => {
+  const series = new Map<string, Task[]>();
+  for (const t of tasks) {
+    if (t.parentId || !t.recurrence || t.recurrence === 'none') continue;
+    const key = `${t.projectId ?? ''}|${t.title.trim().toLowerCase()}`;
+    series.set(key, [...(series.get(key) ?? []), t]);
+  }
+  const time = (d?: Date | null) => (d ? +new Date(d) : 0);
+  const out: Task[] = [];
+  for (const group of series.values()) {
+    const open = group.filter((t) => !t.completed);
+    if (open.length) out.push(...open);
+    else out.push(group.reduce((a, b) => (time(b.completedAt) > time(a.completedAt) ? b : a)));
+  }
+  return out.sort(
+    (a, b) => (a.dueDate ? +a.dueDate : Infinity) - (b.dueDate ? +b.dueDate : Infinity) || a.title.localeCompare(b.title)
+  );
+};
+
 // Gilt der Task heute als "Heute" — egal ob manuell markiert oder heute
 // faellig? (#81) Die Heute-Ansicht zeigt beide Faelle; die Markierung soll das
 // widerspiegeln. Bewusst getrennt von isTodayFlagActive, das weiterhin NUR das
 // manuell gesetzte Flag meint (Umschalten, Ablauf ueber Nacht).
 export const countsAsToday = (task: Task, now = new Date()): boolean =>
-  isTodayFlagActive(task, now) || (!!task.dueDate && isSameDay(task.dueDate, now));
+  isTodayFlagActive(task, now) || isDueOn(task, now);
 
 // Nur wegen der Faelligkeit "heute" — dann ist das Flag implizit und darf nicht
 // umgeschaltet werden (der Task bliebe ohnehin in der Heute-Ansicht).
 export const isImplicitToday = (task: Task, now = new Date()): boolean =>
-  !isTodayFlagActive(task, now) && !!task.dueDate && isSameDay(task.dueDate, now);
+  !isTodayFlagActive(task, now) && isDueOn(task, now);
 
 // Searchable status keywords (German + English) per active GTD flag.
 const statusKeywords = (task: Task): string[] => {
@@ -244,6 +289,9 @@ export const selectVisibleTasks = (
     ui.currentView === 'search' ? tasks : tasks.filter((t) => !t.parentId);
 
   switch (ui.currentView) {
+    case 'recurring':
+      result = selectRecurringSeries(result);
+      break;
     case 'inbox':
       // Inbox = tasks not assigned to any project.
       result = result.filter((t) => !t.projectId);
@@ -322,10 +370,11 @@ export const selectVisibleTasks = (
     }
     case 'today': {
       const now = new Date();
-      // Today = the day's agenda: due today OR pinned via the ☀️ Heute flag
-      // (carries over until done, #112). Overdue lives in Priorität.
+      // Today = the day's agenda: due today (incl. a recurring series that
+      // hits today, #131) OR pinned via the ☀️ Heute flag (carries over until
+      // done, #112). Other overdue tasks live in Priorität.
       result = result.filter((t) => {
-        if (t.dueDate && isSameDay(t.dueDate, now)) return true;
+        if (isDueOn(t, now)) return true;
         if (!isTodayFlagActive(t, now)) return false;
         // Done tasks only if pinned or finished today — not every old pin
         // ever completed (the Erledigt block would fill with history).

@@ -22,6 +22,7 @@ const navMeta: Record<string, { icon: string; label: string }> = {
 const bottomItems: { id: ViewType; icon: string; label: string; devOnly?: boolean }[] = [
   { id: 'search', icon: '🔍', label: 'Suchen' },
   { id: 'completed', icon: '✅', label: 'Erledigt' },
+  { id: 'recurring', icon: '🔁', label: 'Wiederkehrend' },
   { id: 'activity', icon: '📜', label: 'Aktivität' },
   { id: 'reports', icon: '📊', label: 'Berichte' },
   // Pre-deploy approval page — a DEV tool, hidden in production (#31).
