@@ -150,7 +150,8 @@ function App() {
   useEffect(() => {
     const openFromHash = () => {
       // External integrations (Brave/Protonmail extension) create a task via
-      // "#/add?title=…&note=…". Land it in the Inbox, open it, then clear the hash.
+      // "#/add?title=…&note=…". Land it in the Inbox (☀️ Heute with heute=1),
+      // open it, then clear the hash — the extension reads that as "received".
       const add = parseAddTaskHash(window.location.hash);
       if (add) {
         const state = useStore.getState();
@@ -158,6 +159,7 @@ function App() {
           title: add.title,
           description: add.note,
           projectId: null,
+          todayDate: add.today ? dateKey(new Date()) : null,
         });
         state.selectTask(created.id);
         history.replaceState(null, '', window.location.pathname + window.location.search);

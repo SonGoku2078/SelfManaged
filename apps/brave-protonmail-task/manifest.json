@@ -1,13 +1,26 @@
 {
   "manifest_version": 3,
-  "name": "SelfManaged – Protonmail → Task",
-  "version": "0.1.0",
-  "description": "Hängt die gerade geöffnete Protonmail-E-Mail als Aufgabe an SelfManaged an.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "name": "SelfManaged – Proton Mail → Aufgabe",
+  "version": "1.0.0",
+  "description": "Macht aus der offenen Proton-Mail mit einem Klick eine Aufgabe in SelfManaged.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "contextMenus"],
   "host_permissions": ["https://mail.proton.me/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "E-Mail als Task hinzufügen"
+    "default_title": "E-Mail als Aufgabe (Alt+Shift+T)",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "128": "icon.png"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+T" },
+      "description": "Mail als Aufgabe übernehmen"
+    }
   },
   "options_page": "options.html"
 }

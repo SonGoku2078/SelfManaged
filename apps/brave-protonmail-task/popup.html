@@ -10,7 +10,7 @@
       }
       body {
         font-family: system-ui, sans-serif;
-        width: 320px;
+        width: 360px;
         margin: 0;
         padding: 12px;
         color: #1f2329;
@@ -37,7 +37,19 @@
       }
       textarea {
         resize: vertical;
-        min-height: 54px;
+        min-height: 120px;
+      }
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: #1f2329;
+        margin-top: 10px;
+      }
+      .check input {
+        width: auto;
+        margin: 0;
       }
       button {
         margin-top: 12px;
@@ -83,15 +95,19 @@
     <input id="title" type="text" placeholder="Betreff…" />
 
     <label for="note">Notiz</label>
-    <textarea id="note" placeholder="Absender, Link, Auszug…"></textarea>
+    <textarea id="note" placeholder="Absender, Link, Text…"></textarea>
+
+    <label class="check"><input id="today" type="checkbox" /> Für Heute einplanen ☀️</label>
 
     <button id="add" disabled>Zu SelfManaged hinzufügen</button>
 
     <div class="status" id="status"></div>
     <p class="hint">
-      Ziel-App nicht gesetzt? <a href="#" id="opts">Optionen öffnen</a>
+      Tipp: Text in der Mail markieren → nur der landet in der Notiz. Rechtsklick in
+      Proton Mail geht auch ohne dieses Fenster. <a href="#" id="opts">Optionen</a>
     </p>
 
+    <script src="shared.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
