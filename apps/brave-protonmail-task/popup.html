@@ -47,6 +47,31 @@
         color: #1f2329;
         margin-top: 10px;
       }
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        font-family: inherit;
+        font-size: 13px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 6px 8px;
+        background: #fff;
+      }
+      .batch-list {
+        margin: 0;
+        padding: 6px 8px 6px 24px;
+        max-height: 220px;
+        overflow-y: auto;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 12px;
+      }
+      .batch-list li {
+        margin: 2px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .check input {
         width: auto;
         margin: 0;
@@ -89,13 +114,24 @@
     </style>
   </head>
   <body>
-    <h1>E-Mail als Aufgabe</h1>
+    <h1 id="heading">E-Mail als Aufgabe</h1>
 
-    <label for="title">Titel</label>
-    <input id="title" type="text" placeholder="Betreff…" />
+    <div id="single">
+      <label for="title">Titel</label>
+      <input id="title" type="text" placeholder="Betreff…" />
 
-    <label for="note">Notiz</label>
-    <textarea id="note" placeholder="Absender, Link, Text…"></textarea>
+      <label for="note">Notiz</label>
+      <textarea id="note" placeholder="Absender, Link, Text…"></textarea>
+    </div>
+
+    <div id="batch" hidden>
+      <ul id="batchList" class="batch-list"></ul>
+    </div>
+
+    <label for="project">Projekt</label>
+    <select id="project">
+      <option value="">📥 Inbox</option>
+    </select>
 
     <label class="check"><input id="today" type="checkbox" /> Für Heute einplanen ☀️</label>
 
@@ -103,8 +139,8 @@
 
     <div class="status" id="status"></div>
     <p class="hint">
-      Tipp: Text in der Mail markieren → nur der landet in der Notiz. Rechtsklick in
-      Proton Mail geht auch ohne dieses Fenster. <a href="#" id="opts">Optionen</a>
+      Tipp: In der Liste mehrere Mails anhaken → je Mail eine Aufgabe. Text in der Mail
+      markieren → nur der landet in der Notiz. <a href="#" id="opts">Optionen</a>
     </p>
 
     <script src="shared.js"></script>

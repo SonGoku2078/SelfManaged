@@ -35,6 +35,7 @@ import {
 import { enqueue, flush as flushOutbox, pendingCount, writeSeq } from './api/outbox';
 import { saveSnapshot, loadSnapshot } from './api/cache';
 import { buildOccurrence, nextDueAfterCompletion } from './recurrence';
+import { safeNextNumber } from './taskNumber';
 import { orderSections } from './selectors';
 import { nextPomodoroPhase, pomodoroDayKey } from './pomodoro';
 
@@ -850,7 +851,7 @@ export const useStore = create<AppState>()((set, get) => ({
           savedViews: snap.savedViews ?? [], activityLog: snap.activityLog ?? [],
           members: snap.members?.length ? snap.members : [SELF_MEMBER],
           settings: { ...defaultSettings, ...(snap.settings ?? {}) },
-          nextTaskNumber: snap.nextTaskNumber ?? 1,
+          nextTaskNumber: safeNextNumber(snap.nextTaskNumber, snap.tasks),
         });
       }
     }
@@ -899,9 +900,10 @@ export const useStore = create<AppState>()((set, get) => ({
       }
 
       // Trust the server completely — an empty DB is legitimately empty.
-      set({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextTaskNumber ?? 1, dataLoaded: true });
+      const nextNumber = safeNextNumber(nextTaskNumber, tasks);
+      set({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextNumber, dataLoaded: true });
       // Refresh the offline display cache with server truth.
-      saveSnapshot({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextTaskNumber ?? 1 });
+      saveSnapshot({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextNumber });
     } catch (e) {
       // Backend unreachable. Do NOT load or overwrite anything — keep whatever
       // is already in memory and let the offline banner inform the user. The
