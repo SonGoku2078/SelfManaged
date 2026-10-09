@@ -4,6 +4,7 @@ import { useStore } from '../store';
 import {
   byCompletedAtDesc,
   isOverdue,
+  recurrenceLabel,
   countsAsToday,
   isImplicitToday,
   orderSections,
@@ -212,8 +213,8 @@ export default function TaskList({
           </span>
         )}
         {task.recurrence !== 'none' && (
-          <span className="task-recurring" title={`Wiederholt: ${task.recurrence}`}>
-            ↻
+          <span className="task-recurring" title={`Wiederholt sich ${recurrenceLabel(task)}`}>
+            ↻{currentView === 'recurring' && ` ${recurrenceLabel(task)}`}
           </span>
         )}
         {task.durationMin != null && task.durationMin > 0 && (

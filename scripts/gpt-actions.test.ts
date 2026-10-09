@@ -144,6 +144,32 @@ async function main() {
     assert.equal(deleted.data.geloescht.id, taskId);
     assert.equal(api.tasks.length, 0, 'Task ist im Fake-Backend wirklich weg');
 
+    // ── #130: Subtasks ────────────────────────────────────────────────────────
+    const withSubs = await call(base, 'POST', '/v1/tasks', { key: 'geheim-123', body: { title: 'Umzug', projektName: 'Projekt Eins', subtasks: ['Kisten', 'Transporter'] } });
+    assert.equal(withSubs.status, 201);
+    const parentId = withSubs.data.task.id;
+    assert.equal(withSubs.data.subtasks.length, 2, 'Task mit 2 Subtasks angelegt');
+    assert.ok(withSubs.data.subtasks.every((s: { parentId: string; projectId: string }) => s.parentId === parentId && s.projectId === 'p1'));
+
+    const more = await call(base, 'POST', `/v1/tasks/${withSubs.data.task.number}/subtasks`, { key: 'geheim-123', body: { titel: ['Schlüssel'] } });
+    assert.equal(more.status, 201);
+    assert.equal(more.data.subtasks[0].parentId, parentId);
+
+    const asSub = await call(base, 'POST', '/v1/tasks', { key: 'geheim-123', body: { title: 'Strom', uebergeordneterTask: String(withSubs.data.task.number) } });
+    assert.equal(asSub.status, 201);
+    assert.equal(asSub.data.task.parentId, parentId, 'uebergeordneterTask macht den Task zum Subtask');
+
+    const listed = await call(base, 'GET', `/v1/tasks/${parentId}/subtasks`, { key: 'geheim-123' });
+    assert.equal(listed.status, 200);
+    assert.deepEqual(listed.data.subtasks.map((s: { title: string }) => s.title), ['Kisten', 'Transporter', 'Schlüssel', 'Strom'], 'Reihenfolge wie angelegt');
+
+    const nested = await call(base, 'POST', `/v1/tasks/${listed.data.subtasks[0].number}/subtasks`, { key: 'geheim-123', body: { titel: ['zu tief'] } });
+    assert.equal(nested.status, 400, 'Subtask eines Subtasks -> 400');
+    const emptyTitles = await call(base, 'POST', `/v1/tasks/${parentId}/subtasks`, { key: 'geheim-123', body: { titel: [] } });
+    assert.equal(emptyTitles.status, 400, 'leere Titelliste -> 400');
+    const unknownParent = await call(base, 'GET', '/v1/tasks/%23999/subtasks', { key: 'geheim-123' });
+    assert.equal(unknownParent.status, 404);
+
     console.log('Auth + Routing-Verdrahtung: alle Prüfungen bestanden ✔');
   } finally {
     await closeServer(server);

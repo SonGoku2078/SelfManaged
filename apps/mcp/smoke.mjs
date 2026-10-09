@@ -1,4 +1,4 @@
-// Rauchtest (#88, TC-M67; seit #100 auch task_bearbeiten/task_loeschen):
+// Rauchtest (#88, TC-M67; seit #100 auch task_bearbeiten/task_loeschen, seit #130 Subtasks):
 // startet den gebauten MCP-Server per stdio, ruft alle Werkzeuge gegen den
 // Server in TM_API_URL auf und prüft die Antworten.
 // NUR gegen Dev ausführen (legt Tasks an, ändert und löscht sie):
@@ -36,7 +36,8 @@ let failures = 0;
 
 const { tools } = await client.listTools();
 const names = tools.map((t) => t.name).sort();
-step('15 Werkzeuge registriert', names.length === 15, names.join(', '));
+step('17 Werkzeuge registriert', names.length === 17, names.join(', '));
+step('subtasks_anlegen + subtasks_auflisten registriert', names.includes('subtasks_anlegen') && names.includes('subtasks_auflisten'));
 step('task_bearbeiten + task_loeschen registriert', names.includes('task_bearbeiten') && names.includes('task_loeschen'));
 
 const env = await call('umgebung_info');
@@ -118,6 +119,24 @@ const geloescht = await call('task_loeschen', { taskNummer: editNr });
 step('task_loeschen', !geloescht.isError && geloescht.data.geloescht.number === editNr, geloescht.text);
 const nachLoeschen = await call('task_faelligkeit_setzen', { taskNummer: editNr, datum: heute });
 step('gelöschter Task nicht mehr auffindbar', nachLoeschen.isError && /nicht gefunden/.test(nachLoeschen.text), nachLoeschen.text);
+
+// ── #130: Subtasks ───────────────────────────────────────────────────────
+const mitSubs = await call('task_anlegen', { title: `MCP-Subtask-Rauchtest ${stamp}`, projektId: projekt.id, subtasks: ['Sub A', 'Sub B'] });
+const subParentNr = mitSubs.data?.task?.number;
+step('task_anlegen mit subtasks', !mitSubs.isError && mitSubs.data.subtasks.length === 2 && mitSubs.data.subtasks.every((t) => t.parentId === mitSubs.data.task.id && t.projectId === projekt.id), mitSubs.text);
+const mehrSubs = await call('subtasks_anlegen', { taskNummer: subParentNr, titel: ['Sub C'] });
+step('subtasks_anlegen', !mehrSubs.isError && mehrSubs.data.subtasks[0].parentId === mitSubs.data.task.id, mehrSubs.text);
+const alsSub = await call('task_anlegen', { title: 'Sub D', uebergeordneteTaskNummer: subParentNr });
+step('task_anlegen als Subtask erbt Projekt', !alsSub.isError && alsSub.data.task.parentId === mitSubs.data.task.id && alsSub.data.task.projectId === projekt.id, alsSub.text);
+const subListe = await call('subtasks_auflisten', { taskNummer: subParentNr });
+step('subtasks_auflisten in Reihenfolge', !subListe.isError && subListe.data.subtasks.map((t) => t.title).join() === 'Sub A,Sub B,Sub C,Sub D', subListe.text);
+const zuTief = await call('subtasks_anlegen', { taskNummer: mitSubs.data.subtasks[0].number, titel: ['zu tief'] });
+step('Subtask eines Subtasks → Fehlertext', zuTief.isError && /nur eine Ebene/.test(zuTief.text), zuTief.text);
+const projListe = await call('tasks_auflisten', { projektId: projekt.id });
+step('tasks_auflisten rückt Subtasks ein', !projListe.isError && /↳ #\d+ Sub A/.test(projListe.text));
+for (const t of [...subListe.data.subtasks, mitSubs.data.task]) await call('task_loeschen', { taskId: t.id });
+const subWeg = await call('subtasks_auflisten', { taskNummer: subParentNr });
+step('Aufräumen: Subtask-Testdaten gelöscht', subWeg.isError && /nicht gefunden/.test(subWeg.text));
 
 await client.close();
 console.log(failures ? `\n${failures} Prüfung(en) FEHLGESCHLAGEN` : '\nRauchtest bestanden ✔');

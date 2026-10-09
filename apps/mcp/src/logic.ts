@@ -10,6 +10,7 @@ export interface ApiTask {
   title: string;
   description: string;
   projectId: string | null;
+  parentId?: string | null; // gesetzt = Unteraufgabe (Subtask) dieses Tasks
   dueDate: string | null; // ISO-String (Server-JSON)
   priority: Priority;
   categoryIds: string[];
@@ -174,6 +175,119 @@ export function findTask(tasks: ApiTask[], ref: { id?: string; number?: number }
   throw new LogicError('Bitte taskId oder taskNummer angeben.');
 }
 
+// ── Subtasks ────────────────────────────────────────────────────────────────
+// Wie in der App (store.setTaskParent): genau eine Ebene — ein Subtask hat
+// keine eigenen Subtasks, und er gehört immer zum Projekt seines Parents.
+
+export const subtasksOf = (tasks: ApiTask[], parentId: string, includeDone = true): ApiTask[] =>
+  tasks.filter((t) => t.parentId === parentId && (includeDone || !t.completed)).sort(byAppOrder);
+
+// Prüft, ob `parent` Subtasks bekommen darf.
+export function assertSubtaskParent(parent: ApiTask): ApiTask {
+  if (parent.parentId) {
+    throw new LogicError(
+      `#${parent.number} „${parent.title}" ist selbst eine Unteraufgabe — Subtasks gibt es nur eine Ebene tief. Bitte den übergeordneten Task verwenden.`,
+    );
+  }
+  return parent;
+}
+
+// Baut die Task-Objekte für neue Subtasks unter `parent`: Projekt vom Parent,
+// fortlaufende Nummern ab `firstNumber`, sortOrder hinter den vorhandenen
+// Geschwistern (gleiche Reihenfolge wie eingegeben, vgl. store.addSubtask).
+export function buildSubtasks(
+  parent: ApiTask,
+  titles: string[],
+  ctx: { tasks: ApiTask[]; firstNumber: number; now?: Date },
+): Record<string, unknown>[] {
+  assertSubtaskParent(parent);
+  const clean = titles.map((t) => t.trim());
+  if (clean.length === 0) throw new LogicError('Bitte mindestens einen Subtask-Titel angeben.');
+  if (clean.some((t) => !t)) throw new LogicError('Subtask-Titel dürfen nicht leer sein.');
+  const siblingMax = ctx.tasks
+    .filter((t) => t.parentId === parent.id)
+    .reduce((m, t) => Math.max(m, t.sortOrder ?? 0), -1);
+  return clean.map((title, i) =>
+    buildNewTask(
+      { title, projectId: parent.projectId, parentId: parent.id, sortOrder: siblingMax + 1 + i },
+      { number: ctx.firstNumber + i, now: ctx.now },
+    ),
+  );
+}
+
+// Gemeinsame Eingabe von task_anlegen (MCP) und POST /tasks (GPT-Actions).
+export interface CreateTaskRequest {
+  title: string;
+  projektId?: string;
+  projektName?: string;
+  beschreibung?: string;
+  faelligAm?: string;
+  prioritaet?: Priority;
+  kategorien?: string[];
+  planenFuer?: string;
+  subtasks?: string[];
+  parent?: ApiTask | null; // bereits aufgelöst; gesetzt = neuer Task wird Subtask
+}
+
+// Baut den neuen Task samt optionaler Subtasks, ohne zu schreiben — alle
+// Validierungsfehler fallen hier, bevor der erste Task angelegt ist.
+export function planNewTask(
+  req: CreateTaskRequest,
+  ctx: { tasks: ApiTask[]; projects: ApiProject[]; categories: ApiCategory[]; now?: Date },
+): { task: Record<string, unknown>; subtasks: Record<string, unknown>[]; project: ApiProject | null } {
+  const parent = req.parent ? assertSubtaskParent(req.parent) : null;
+  if (parent && req.subtasks?.length) {
+    throw new LogicError('Ein Subtask kann keine eigenen Subtasks haben — entweder subtasks oder einen übergeordneten Task angeben, nicht beides.');
+  }
+  let project = req.projektId || req.projektName ? resolveProject(ctx.projects, { id: req.projektId, name: req.projektName }) : null;
+  if (parent) {
+    if (project && project.id !== parent.projectId) {
+      const pn = ctx.projects.find((p) => p.id === parent.projectId)?.name ?? 'Inbox';
+      throw new LogicError(`Ein Subtask gehört immer zum Projekt seines Tasks („${pn}") — bitte kein anderes Projekt angeben.`);
+    }
+    project = ctx.projects.find((p) => p.id === parent.projectId) ?? null;
+  }
+  const categoryIds = req.kategorien?.length ? resolveCategories(ctx.categories, req.kategorien) : [];
+  const siblingMax = parent
+    ? ctx.tasks.filter((t) => t.parentId === parent.id).reduce((m, t) => Math.max(m, t.sortOrder ?? 0), -1)
+    : -1;
+  const number = nextTaskNumber(ctx.tasks);
+  const task = buildNewTask(
+    {
+      title: req.title,
+      projectId: project?.id ?? null,
+      description: req.beschreibung,
+      dueKey: req.faelligAm ?? null,
+      priority: req.prioritaet,
+      categoryIds,
+      planKey: req.planenFuer ?? null,
+      parentId: parent?.id ?? null,
+      sortOrder: parent ? siblingMax + 1 : 0,
+    },
+    { number, now: ctx.now },
+  );
+  const subtasks = req.subtasks?.length
+    ? buildSubtasks(task as unknown as ApiTask, req.subtasks, { tasks: [], firstNumber: number + 1, now: ctx.now })
+    : [];
+  return { task, subtasks, project };
+}
+
+// Listen-Reihenfolge mit Subtasks direkt unter ihrem Parent (falls der Parent
+// in der Liste ist); verwaiste Subtasks bleiben an ihrer Stelle.
+export function nestSubtasks(list: ApiTask[]): ApiTask[] {
+  const ids = new Set(list.map((t) => t.id));
+  const children = new Map<string, ApiTask[]>();
+  for (const t of list) {
+    if (t.parentId && ids.has(t.parentId)) children.set(t.parentId, [...(children.get(t.parentId) ?? []), t]);
+  }
+  const out: ApiTask[] = [];
+  for (const t of list) {
+    if (t.parentId && ids.has(t.parentId)) continue;
+    out.push(t, ...(children.get(t.id) ?? []).sort(byAppOrder));
+  }
+  return out;
+}
+
 // ── Tasks: Anlegen & Ändern ─────────────────────────────────────────────────
 
 // Der Server vergibt keine Nummer — Konvention des Stores: fortlaufend.
@@ -192,6 +306,8 @@ export interface NewTaskInput {
   priority?: Priority;
   categoryIds?: string[];
   planKey?: string | null;
+  parentId?: string | null;
+  sortOrder?: number;
 }
 
 export function buildNewTask(input: NewTaskInput, ctx: { number: number; id?: string; now?: Date }): Record<string, unknown> {
@@ -206,7 +322,7 @@ export function buildNewTask(input: NewTaskInput, ctx: { number: number; id?: st
     title,
     description: input.description ?? '',
     projectId: input.projectId ?? null,
-    parentId: null,
+    parentId: input.parentId ?? null,
     sectionId: null,
     dueDate: input.dueKey ? dateKeyToIso(input.dueKey) : null,
     priority: input.priority ?? 'medium',
@@ -221,7 +337,7 @@ export function buildNewTask(input: NewTaskInput, ctx: { number: number; id?: st
     recurrence: 'none',
     recurrenceEnd: null,
     linkedProjectId: null,
-    sortOrder: 0,
+    sortOrder: input.sortOrder ?? 0,
     createdAt: now,
     updatedAt: now,
   };
@@ -311,6 +427,7 @@ export function formatTaskLine(t: ApiTask, projectName?: string | null, todayKey
   if (t.someday) flags.push('Someday');
   if (t.waiting) flags.push(`wartet${t.waitingFor ? ` auf ${t.waitingFor}` : ''}`);
   if (t.completed) flags.push('erledigt');
+  if (t.parentId) flags.push('Unteraufgabe');
   const star = t.starred ? '★ ' : '';
   const link = baseUrl ? ` → ${taskUrl(baseUrl, t.number)}` : '';
   return `${star}#${t.number} ${t.title}${flags.length ? ` (${flags.join(', ')})` : ''}${link}`;
@@ -325,6 +442,7 @@ export function taskSummary(t: ApiTask, projectName?: string | null, baseUrl?: s
     title: t.title,
     projectId: t.projectId,
     projectName: projectName ?? null,
+    parentId: t.parentId ?? null,
     starred: !!t.starred,
     todayDate: t.todayDate ?? null,
     thisWeek: !!t.thisWeek,

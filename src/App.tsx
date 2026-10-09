@@ -48,6 +48,7 @@ const VIEW_TITLES: Record<ViewType, string> = {
   templates: 'Vorlagen',
   activity: 'Aktivität',
   completed: 'Erledigt',
+  recurring: 'Wiederkehrend',
   reports: 'Berichte',
   testreport: 'Testreport',
   members: 'Benutzer',
@@ -415,6 +416,7 @@ function App() {
     !isFilterView &&
     (ui.currentView === 'nextweek' ||
       ui.currentView === 'someday' ||
+      ui.currentView === 'recurring' ||
       ui.currentView === 'calendar');
 
   const appEnv = (import.meta.env.VITE_APP_ENV as string | undefined) ?? 'development';
@@ -722,8 +724,9 @@ function App() {
           </>
         ) : (
         <>
-        {/* No quick-add on Erledigt and Suche — search is for finding, not creating (#19). */}
-        {ui.currentView !== 'completed' && ui.currentView !== 'search' && (
+        {/* No quick-add on Erledigt and Suche — search is for finding, not creating (#19).
+            Nor on Wiederkehrend: a quick-added task would not recur (#131). */}
+        {ui.currentView !== 'completed' && ui.currentView !== 'search' && ui.currentView !== 'recurring' && (
         <div className="quick-add">
           <button
             className="quick-add-dir"
@@ -867,6 +870,13 @@ function App() {
           </div>
         )}
 
+        {ui.currentView === 'recurring' && (
+          <div className="view-hint">
+            Alle wiederkehrenden Aufgaben auf einen Blick — wie Daueraufträge. Oben die laufenden Serien mit
+            nächstem Termin, unten beendete Serien. Wiederholung ändern: Aufgabe öffnen.
+          </div>
+        )}
+
         {ui.currentView === 'completed' && (
           <ErrorBoundary>
             <CompletionCalendar tasks={tasks} />
@@ -886,7 +896,9 @@ function App() {
                   ? 'Keine offenen Aufgaben — markiere welche mit ★ oder setze Priorität Hoch.'
                   : ui.currentView === 'completed'
                     ? 'Noch nichts erledigt (oder Filter zu eng). Hake Aufgaben ab — sie erscheinen hier.'
-                    : undefined
+                    : ui.currentView === 'recurring'
+                      ? 'Keine wiederkehrenden Aufgaben. Wiederholung setzt du im Detail einer Aufgabe.'
+                      : undefined
             }
             selectionMode={bulkMode}
             selectedIds={selectedIds}

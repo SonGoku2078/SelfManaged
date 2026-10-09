@@ -1,11 +1,11 @@
-// Proves #88 (TC-A11): die reine Logik des MCP-Servers — Tagesplan-Gruppierung,
+// Proves #88 (TC-A11) + #130 (Subtasks): die reine Logik des MCP-Servers — Tagesplan-Gruppierung,
 // Nummernvergabe, Projektnamen-Auflösung, Planen ⇒ Stern, Task-Adressierung,
 // Umgebungs-Erkennung. Kein Netz, kein Server.
 // Run: npx tsx scripts/mcp.test.ts
 import assert from 'node:assert';
 import {
-  buildNewTask, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
-  groupDayPlan, inboxTasks, LogicError, nextSteps, nextTaskNumber, newTaskId, planPatch,
+  assertSubtaskParent, buildNewTask, buildSubtasks, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
+  groupDayPlan, inboxTasks, LogicError, nestSubtasks, nextSteps, nextTaskNumber, newTaskId, planNewTask, planPatch, subtasksOf,
   resolveCategories, resolveProject, searchTasks, tasksOfProject, taskSummary, taskUrl, unplanPatch,
   type ApiProject, type ApiTask,
 } from '../apps/mcp/src/logic';
@@ -159,5 +159,49 @@ assert.equal(taskUrl('http://192.168.8.187:3001/', 42), 'http://192.168.8.187:30
 assert.equal(formatTaskLine(task({ number: 7, title: 'X' }), null, today, 'http://localhost:3002'), '#7 X → http://localhost:3002/#/t/7');
 assert.equal(taskSummary(task({ number: 7, title: 'X' }), null, 'http://localhost:3002').url, 'http://localhost:3002/#/t/7');
 assert.equal(taskSummary(task({ number: 7, title: 'X' })).url, null, 'ohne baseUrl kein Link');
+
+// ── Subtasks (#130) ───────────────────────────────────────────────────────
+const st: ApiTask[] = [
+  task({ id: 'P', number: 20, title: 'Umzug', projectId: 'p-web', sortOrder: 0, createdAt: '2026-01-01T00:00:00.000Z' }),
+  task({ id: 'S1', number: 21, title: 'Kisten', projectId: 'p-web', parentId: 'P', sortOrder: 0, createdAt: '2026-01-02T00:00:00.000Z' }),
+  task({ id: 'S2', number: 22, title: 'Transporter', projectId: 'p-web', parentId: 'P', sortOrder: 1, completed: true, createdAt: '2026-01-03T00:00:00.000Z' }),
+  task({ id: 'Q', number: 23, title: 'Anderes', projectId: 'p-web', sortOrder: 1, createdAt: '2026-01-04T00:00:00.000Z' }),
+];
+assert.deepEqual(subtasksOf(st, 'P').map((t) => t.id), ['S1', 'S2'], 'Subtasks in App-Reihenfolge');
+assert.deepEqual(subtasksOf(st, 'P', false).map((t) => t.id), ['S1'], 'nur offene');
+assert.throws(() => assertSubtaskParent(st[1]), /nur eine Ebene/, 'Subtask kann keine Subtasks bekommen');
+
+const subs = buildSubtasks(st[0], [' Adresse ummelden ', 'Schlüssel'], { tasks: st, firstNumber: 24, now });
+assert.equal(subs.length, 2);
+assert.deepEqual(subs.map((s) => s.title), ['Adresse ummelden', 'Schlüssel'], 'Titel getrimmt, Reihenfolge erhalten');
+assert.deepEqual(subs.map((s) => s.number), [24, 25], 'fortlaufende Nummern');
+assert.deepEqual(subs.map((s) => s.sortOrder), [2, 3], 'hinter den vorhandenen Geschwistern');
+assert.ok(subs.every((s) => s.parentId === 'P' && s.projectId === 'p-web'), 'parentId + Projekt vom Parent');
+assert.ok(subs.every((s) => s.starred === false && s.todayDate === null), 'Subtasks starten ohne ★/Plan');
+assert.throws(() => buildSubtasks(st[0], [], { tasks: st, firstNumber: 1 }), /mindestens einen/);
+assert.throws(() => buildSubtasks(st[0], ['ok', '  '], { tasks: st, firstNumber: 1 }), /nicht leer/);
+
+const ctx = { tasks: st, projects, categories: cats, now };
+const withSubs = planNewTask({ title: 'Reise', projektName: 'Finanzen', subtasks: ['Flug', 'Hotel'] }, ctx);
+assert.equal(withSubs.task.number, 24, 'Parent bekommt max+1');
+assert.equal(withSubs.task.parentId, null);
+assert.equal(withSubs.project?.id, 'p-fin');
+assert.deepEqual(withSubs.subtasks.map((s) => [s.number, s.parentId, s.projectId, s.sortOrder]), [[25, withSubs.task.id, 'p-fin', 0], [26, withSubs.task.id, 'p-fin', 1]], 'Subtasks hängen am neuen Task');
+
+const asSub = planNewTask({ title: 'Strom ummelden', parent: st[0] }, ctx);
+assert.equal(asSub.task.parentId, 'P', 'neuer Task wird Subtask');
+assert.equal(asSub.task.projectId, 'p-web', 'erbt Projekt');
+assert.equal(asSub.task.sortOrder, 2, 'hinter vorhandenen Subtasks');
+assert.equal(asSub.project?.id, 'p-web');
+assert.equal(planNewTask({ title: 'x', parent: st[0], projektId: 'p-web' }, ctx).task.parentId, 'P', 'gleiches Projekt angeben ist ok');
+assert.throws(() => planNewTask({ title: 'x', parent: st[0], projektName: 'Finanzen' }, ctx), /Projekt seines Tasks/);
+assert.throws(() => planNewTask({ title: 'x', parent: st[0], subtasks: ['y'] }, ctx), /nicht beides/);
+assert.throws(() => planNewTask({ title: 'x', parent: st[1] }, ctx), /nur eine Ebene/);
+
+assert.deepEqual(nestSubtasks([st[3], st[1], st[0]]).map((t) => t.id), ['Q', 'P', 'S1'], 'Subtask unter seinem Parent');
+assert.deepEqual(nestSubtasks([st[1], st[3]]).map((t) => t.id), ['S1', 'Q'], 'verwaister Subtask bleibt stehen');
+assert.match(formatTaskLine(st[1]), /Unteraufgabe/);
+assert.equal(taskSummary(st[1]).parentId, 'P');
+assert.equal(taskSummary(st[0]).parentId, null);
 
 console.log('mcp.test.ts: alle Prüfungen bestanden ✔');
