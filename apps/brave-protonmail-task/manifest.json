@@ -1,10 +1,18 @@
 {
   "manifest_version": 3,
   "name": "SelfManaged – Proton Mail → Aufgabe",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Macht aus der offenen Proton-Mail mit einem Klick eine Aufgabe in SelfManaged.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs", "contextMenus"],
-  "host_permissions": ["https://mail.proton.me/*"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "https://mail.proton.me/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -18,8 +26,16 @@
   },
   "commands": {
     "_execute_action": {
-      "suggested_key": { "default": "Alt+Shift+T" },
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
       "description": "Mail als Aufgabe übernehmen"
+    },
+    "add-inbox": {
+      "suggested_key": {
+        "default": "Alt+Shift+M"
+      },
+      "description": "Offene Mail direkt in die SelfManaged-Inbox (ohne Fenster)"
     }
   },
   "options_page": "options.html"

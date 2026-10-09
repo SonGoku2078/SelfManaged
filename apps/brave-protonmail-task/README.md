@@ -5,9 +5,13 @@ SelfManaged. Manifest V3, läuft in Brave, Chrome und Edge.
 
 ## Nutzung
 
-- **Rechtsklick** irgendwo in der offenen Mail →
+- **Rechtsklick in der geöffneten Mail** (Text, Kopf, Leerfläche) →
   **„Als Aufgabe zu SelfManaged (Inbox)“** oder **„Als Aufgabe für Heute ☀️“**.
   Kein Fenster, das Icon zeigt kurz ✓ (oder ! bei einem Problem).
+  *Nicht in der Mail-Liste:* dort zeigt Proton sein eigenes Menü
+  (Move to trash …), in das keine Erweiterung etwas einfügen kann.
+- **Alt+Shift+M** → die gerade offene Mail direkt in die Inbox, ohne Fenster
+  (geht auch, wenn du in der Liste stehst und die Mail rechts offen ist).
 - **Icon klicken** oder **Alt+Shift+T** → Titel/Notiz anpassen, optional
   „Für Heute einplanen“, **Enter**.
 - **Text markieren** vor dem Klick → nur der markierte Teil landet in der Notiz.
@@ -42,6 +46,8 @@ erlaubt API-Aufrufe ohnehin nur von der eigenen App-Seite aus.
    (`apps/brave-protonmail-task`) wählen. Erweiterung anpinnen.
 4. Fertig — Standard-Ziel ist PROD. Für Tests unter **Optionen** eine andere
    App-URL setzen (z. B. `http://localhost:5173`).
+
+Tastenkürzel ändern: `brave://extensions/shortcuts`.
 
 Nach einem Update dieses Ordners in `brave://extensions` bei der Erweiterung
 auf ↻ (Neu laden) klicken.
