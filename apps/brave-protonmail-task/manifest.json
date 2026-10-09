@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SelfManaged – Proton Mail → Aufgabe",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Macht aus der offenen Proton-Mail mit einem Klick eine Aufgabe in SelfManaged.",
   "permissions": [
     "activeTab",
@@ -11,7 +11,10 @@
     "contextMenus"
   ],
   "host_permissions": [
-    "https://mail.proton.me/*"
+    "https://mail.proton.me/*",
+    "https://selfmanaged-prod-6aaa45fb.appwrite.network/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -38,5 +41,9 @@
       "description": "Offene Mail direkt in die SelfManaged-Inbox (ohne Fenster)"
     }
   },
-  "options_page": "options.html"
+  "options_page": "options.html",
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
 }

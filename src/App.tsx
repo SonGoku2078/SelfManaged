@@ -147,21 +147,30 @@ function App() {
   }, [projects]);
 
   // Deep-link support: open the task referenced by #/t/<number> in the URL.
+  // Waits until data is there (offline cache or server): a link handled on a
+  // still-empty store created the extension's task with number 1 (#136).
+  const hasData = useStore((s) => s.dataLoaded || s.tasks.length > 0);
   useEffect(() => {
+    if (!hasData) return;
     const openFromHash = () => {
-      // External integrations (Brave/Protonmail extension) create a task via
-      // "#/add?title=…&note=…". Land it in the Inbox (☀️ Heute with heute=1),
-      // open it, then clear the hash — the extension reads that as "received".
+      // External integrations (Proton Mail extension) create tasks via
+      // "#/add?…" (one or several, see parseAddTaskHash). They land in the
+      // Inbox unless a project is given (☀️ Heute with heute=1); then the hash
+      // is cleared — the extension reads that as "received".
       const add = parseAddTaskHash(window.location.hash);
       if (add) {
         const state = useStore.getState();
-        const created = state.addTask({
-          title: add.title,
-          description: add.note,
-          projectId: null,
-          todayDate: add.today ? dateKey(new Date()) : null,
-        });
-        state.selectTask(created.id);
+        const projectId =
+          add.projectId && state.projects.some((p) => p.id === add.projectId) ? add.projectId : null;
+        const created = add.tasks.map((t) =>
+          state.addTask({
+            title: t.title,
+            description: t.note,
+            projectId,
+            todayDate: add.today ? dateKey(new Date()) : null,
+          })
+        );
+        state.selectTask(created[0].id);
         history.replaceState(null, '', window.location.pathname + window.location.search);
         return;
       }
@@ -174,7 +183,7 @@ function App() {
     openFromHash();
     window.addEventListener('hashchange', openFromHash);
     return () => window.removeEventListener('hashchange', openFromHash);
-  }, []);
+  }, [hasData]);
   const addTask = useStore((s) => s.addTask);
   const selectTask = useStore((s) => s.selectTask);
   const updateProject = useStore((s) => s.updateProject);

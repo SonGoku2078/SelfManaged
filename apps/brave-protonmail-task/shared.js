@@ -30,10 +30,25 @@ function buildNote(mail) {
   return [head.join('  \n'), text].filter(Boolean).join('\n\n');
 }
 
-function addHash(task) {
-  const q = new URLSearchParams({ title: task.title });
-  if (task.note) q.set('note', task.note);
-  if (task.today) q.set('heute', '1');
+// Batch item from a ticked list entry: no body, just who + link.
+function buildListNote(item) {
+  const head = [];
+  if (item.sender) head.push(`**Von:** ${item.sender}`);
+  head.push(`**Mail:** ${item.url}`);
+  return head.join('  \n');
+}
+
+// One or more tasks, all into the same project (null = Inbox, GTD default).
+function addHash({ tasks, today, projectId }) {
+  const q = new URLSearchParams();
+  if (tasks.length === 1) {
+    q.set('title', tasks[0].title);
+    if (tasks[0].note) q.set('note', tasks[0].note);
+  } else {
+    q.set('tasks', JSON.stringify(tasks.map((t) => ({ title: t.title, note: t.note || undefined }))));
+  }
+  if (projectId) q.set('project', projectId);
+  if (today) q.set('heute', '1');
   return `#/add?${q.toString()}`;
 }
 
@@ -59,11 +74,53 @@ async function waitForReceipt(tabId) {
   return false;
 }
 
+async function waitLoaded(tabId) {
+  const until = Date.now() + RECEIVE_TIMEOUT_MS;
+  while (Date.now() < until) {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.status === 'complete') return;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+// Projects of the signed-in app, read from its offline cache (tm-cache) in the
+// app tab — no API access needed. Cached in the extension for an instant list.
+// Returns null when the app has no data yet (signed out / first start).
+async function fetchProjects() {
+  const appUrl = await getAppUrl();
+  let tab = await findAppTab(appUrl);
+  if (!tab) tab = await chrome.tabs.create({ url: `${appUrl}/`, active: false });
+  await waitLoaded(tab.id);
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => {
+      try {
+        const snap = JSON.parse(localStorage.getItem('tm-cache') || 'null');
+        if (!snap || !Array.isArray(snap.projects)) return null;
+        return snap.projects
+          .filter((p) => p && !p.archived)
+          .map((p) => ({ id: p.id, name: p.name, kind: p.kind, active: p.active, pinned: !!p.pinned }));
+      } catch {
+        return null;
+      }
+    },
+  });
+  const projects = res && res.result;
+  if (projects) await chrome.storage.local.set({ projects });
+  return projects;
+}
+
+async function cachedProjects() {
+  const { projects } = await chrome.storage.local.get('projects');
+  return Array.isArray(projects) ? projects : [];
+}
+
 // Returns { ok: true } or { ok: false, error }. Never steals focus on success;
 // on failure the app tab is brought up (usually: sign-in needed).
-async function deliverTask(task) {
+// job = { tasks: [{ title, note }], today, projectId }
+async function deliverTask(job) {
   const appUrl = await getAppUrl();
-  const hash = addHash(task);
+  const hash = addHash(job);
   let tab = await findAppTab(appUrl);
   if (tab) {
     const base = (tab.url || appUrl).split('#')[0];

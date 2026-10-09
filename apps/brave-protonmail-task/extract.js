@@ -47,7 +47,25 @@ function extractProtonMail() {
   body = clean(body);
   if (body.length > MAX_NOTE) body = body.slice(0, MAX_NOTE).trimEnd() + ' …';
 
+  // Mails ticked in the list (Item.tsx: data-element-id, message-item:<Subject>,
+  // ItemCheckbox). Each becomes its own task — subject, sender, link.
+  const segs = location.pathname.split('/').filter(Boolean);
+  const folder = '/' + (segs[0] === 'u' ? segs.slice(0, 3) : segs.slice(0, 1)).join('/');
+  const checked = Array.from(document.querySelectorAll('[data-element-id]'))
+    .filter((item) => item.querySelector('input[type="checkbox"]:checked'))
+    .map((item) => {
+      const testid = item.getAttribute('data-testid') || '';
+      const listSubject = testid.startsWith('message-item:') ? testid.slice('message-item:'.length).trim() : '';
+      return {
+        subject: listSubject || 'E-Mail ohne Betreff',
+        sender: text(item.querySelector('[data-testid="message-column:sender-address"], [data-testid="message-row:sender-address"]')),
+        url: `${location.origin}${folder}/${item.getAttribute('data-element-id')}`,
+      };
+    });
+
   return {
+    hasOpenMail: expanded.length > 0 || !!document.querySelector('[data-testid="conversation-header:subject"]'),
+    checked,
     subject: subject || 'E-Mail ohne Betreff',
     sender,
     url: location.href,

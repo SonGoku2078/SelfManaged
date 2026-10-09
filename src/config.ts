@@ -13,27 +13,56 @@ export const parseTaskHash = (hash: string): number | null => {
   return m ? Number(m[1]) : null;
 };
 
-// Deep link used by external integrations (e.g. the Brave/Protonmail extension)
-// to create a task: "#/add?title=…&note=…&heute=1". Note is optional
-// (URL-encoded); heute=1 plans it for today (☀️) instead of only the Inbox.
+// Deep link used by external integrations (e.g. the Proton Mail extension) to
+// create tasks: "#/add?title=…&note=…" for one, "#/add?tasks=[{title,note}]"
+// for several (one per ticked mail). Optional: project=<id> (default: Inbox,
+// i.e. no project — GTD), heute=1 plans them for today (☀️).
 export interface AddTaskLink {
-  title: string;
-  note?: string;
-  today?: boolean;
+  tasks: { title: string; note?: string }[];
+  projectId: string | null;
+  today: boolean;
 }
 export const addTaskHash = (link: AddTaskLink) => {
-  const q = new URLSearchParams({ title: link.title });
-  if (link.note) q.set('note', link.note);
+  const q = new URLSearchParams();
+  if (link.tasks.length === 1) {
+    q.set('title', link.tasks[0].title);
+    if (link.tasks[0].note) q.set('note', link.tasks[0].note);
+  } else {
+    q.set('tasks', JSON.stringify(link.tasks));
+  }
+  if (link.projectId) q.set('project', link.projectId);
   if (link.today) q.set('heute', '1');
   return `#/add?${q.toString()}`;
 };
+const MAX_LINK_TASKS = 200;
 export const parseAddTaskHash = (hash: string): AddTaskLink | null => {
   const prefix = '#/add?';
   if (!hash.startsWith(prefix)) return null;
   const q = new URLSearchParams(hash.slice(prefix.length));
-  const title = q.get('title')?.trim();
-  if (!title) return null;
-  return { title, note: q.get('note') ?? undefined, today: q.get('heute') === '1' };
+  let tasks: AddTaskLink['tasks'] = [];
+  const many = q.get('tasks');
+  if (many) {
+    try {
+      const raw: unknown = JSON.parse(many);
+      if (Array.isArray(raw)) {
+        tasks = raw
+          .filter((t): t is { title: unknown; note?: unknown } => !!t && typeof t === 'object')
+          .map((t) => ({
+            title: typeof t.title === 'string' ? t.title.trim() : '',
+            note: typeof t.note === 'string' && t.note ? t.note : undefined,
+          }))
+          .filter((t) => t.title)
+          .slice(0, MAX_LINK_TASKS);
+      }
+    } catch {
+      /* malformed list → nothing */
+    }
+  } else {
+    const title = q.get('title')?.trim();
+    if (title) tasks = [{ title, note: q.get('note') ?? undefined }];
+  }
+  if (!tasks.length) return null;
+  return { tasks, projectId: q.get('project') || null, today: q.get('heute') === '1' };
 };
 
 // Base for Nozbe Classic API calls. In dev this is the Vite proxy path (`/nozbe-api`,

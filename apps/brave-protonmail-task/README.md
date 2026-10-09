@@ -5,19 +5,23 @@ SelfManaged. Manifest V3, läuft in Brave, Chrome und Edge.
 
 ## Nutzung
 
-- **Rechtsklick in der geöffneten Mail** (Text, Kopf, Leerfläche) →
-  **„Als Aufgabe zu SelfManaged (Inbox)“** oder **„Als Aufgabe für Heute ☀️“**.
-  Kein Fenster, das Icon zeigt kurz ✓ (oder ! bei einem Problem).
-  *Nicht in der Mail-Liste:* dort zeigt Proton sein eigenes Menü
-  (Move to trash …), in das keine Erweiterung etwas einfügen kann.
-- **Alt+Shift+M** → die gerade offene Mail direkt in die Inbox, ohne Fenster
-  (geht auch, wenn du in der Liste stehst und die Mail rechts offen ist).
-- **Icon klicken** oder **Alt+Shift+T** → Titel/Notiz anpassen, optional
-  „Für Heute einplanen“, **Enter**.
+Alles landet standardmäßig in der **Inbox** (GTD: erst sammeln, beim Planen
+einem Projekt zuordnen). Es wird kein Projekt „Inbox“ angelegt.
+
+- **Eine Mail:** Mail öffnen, dann
+  - **Rechtsklick in den Mail-Text** → „Als Aufgabe zu SelfManaged (Inbox)“ /
+    „… für Heute ☀️“ — ohne Fenster, das Icon zeigt kurz ✓, oder
+  - **Alt+Shift+M** → direkt in die Inbox, oder
+  - **Icon / Alt+Shift+T** → Titel, Notiz und **Projekt** wählen, Enter.
+- **Mehrere Mails:** in der Proton-Liste **anhaken**, dann
+  - **Icon / Alt+Shift+T** → Liste prüfen, **Projekt** wählen (Vorgabe Inbox),
+    „N Aufgaben anlegen“, oder
+  - **Alt+Shift+M** → alle direkt in die Inbox.
+  Je Mail eine Aufgabe: Betreff als Titel, Absender + Link zur Mail als Notiz.
 - **Text markieren** vor dem Klick → nur der markierte Teil landet in der Notiz.
 
-Die Aufgabe bekommt den Betreff als Titel; die Notiz enthält Absender, den
-Link zurück zur Mail und den Mail-Text (bis ~6000 Zeichen).
+*In der Mail-Liste* ersetzt Proton das Rechtsklick-Menü durch sein eigenes —
+dort Alt+Shift+M oder das Icon nutzen.
 
 ## Funktionsweise
 
@@ -25,7 +29,8 @@ Die Erweiterung übergibt die Aufgabe an die **SelfManaged-Web-App in diesem
 Browser** per Deep-Link:
 
 ```
-<App-URL>/#/add?title=<Betreff>&note=<Notiz>[&heute=1]
+<App-URL>/#/add?title=<Betreff>&note=<Notiz>[&project=<id>][&heute=1]
+<App-URL>/#/add?tasks=[{"title":…,"note":…},…][&project=<id>]
 ```
 
 Ist ein SelfManaged-Tab offen, wird er im Hintergrund wiederverwendet, sonst
@@ -33,6 +38,9 @@ Ist ein SelfManaged-Tab offen, wird er im Hintergrund wiederverwendet, sonst
 `src/config.ts`) legt die Aufgabe an und speichert sie über ihre normale
 Sync-Warteschlange — auch offline. Danach entfernt sie den Link aus der
 Adresszeile; daran erkennt die Erweiterung „angekommen“.
+
+Die Projektliste liest die Erweiterung aus dem Offline-Speicher der App im
+App-Tab (`tm-cache`).
 
 Darum braucht die Erweiterung **kein Passwort und keinen Token**: Appwrite
 erlaubt API-Aufrufe ohnehin nur von der eigenen App-Seite aus.

@@ -1,6 +1,7 @@
 // Proton Mail → SelfManaged without the popup:
 // - Right-click → "Als Aufgabe zu SelfManaged (Inbox)" / "… für Heute ☀️"
 // - Alt+Shift+M → straight into the Inbox
+// With several mails ticked in the list, each becomes its own task.
 // The icon badge shows the result (✓ / !).
 //
 // The menu is not limited by documentUrlPatterns: the mail text sits in an
@@ -51,9 +52,19 @@ async function addFromTab(tab, { today, selectionText }) {
   try {
     const mail = await extractFromTab(tab.id);
     if (!mail) throw new Error('E-Mail konnte nicht gelesen werden.');
-    // Right-clicking a marked passage: that passage is the note.
-    if (selectionText && !mail.selected) mail.selected = selectionText;
-    const res = await deliverTask({ title: mail.subject, note: buildNote(mail), today });
+    let tasks;
+    if (mail.checked.length > 1 || (mail.checked.length === 1 && !mail.hasOpenMail)) {
+      // Several mails ticked in the list → one task each.
+      tasks = mail.checked.map((it) => ({ title: it.subject, note: buildListNote(it) }));
+    } else if (mail.hasOpenMail) {
+      // Right-clicking a marked passage: that passage is the note.
+      if (selectionText && !mail.selected) mail.selected = selectionText;
+      tasks = [{ title: mail.subject, note: buildNote(mail) }];
+    } else {
+      throw new Error('Keine Mail offen oder angehakt.');
+    }
+    // No project here: GTD — everything lands in the Inbox first.
+    const res = await deliverTask({ tasks, today, projectId: null });
     badge(res.ok ? '✓' : '!', res.ok ? '#2b8a3e' : '#b91c1c');
   } catch (e) {
     console.error('SelfManaged: Aufgabe aus Mail fehlgeschlagen', e);
