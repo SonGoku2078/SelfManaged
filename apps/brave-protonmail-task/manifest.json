@@ -1,18 +1,19 @@
 {
   "manifest_version": 3,
   "name": "SelfManaged – Proton Mail → Aufgabe",
-  "version": "1.2.0",
-  "description": "Macht aus der offenen Proton-Mail mit einem Klick eine Aufgabe in SelfManaged.",
+  "version": "2.0.0",
+  "description": "Proton-Mails mit einem Klick als Aufgaben direkt an SelfManaged senden.",
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
     "tabs",
-    "contextMenus"
+    "contextMenus",
+    "notifications"
   ],
   "host_permissions": [
     "https://mail.proton.me/*",
-    "https://selfmanaged-prod-6aaa45fb.appwrite.network/*",
+    "https://fra.cloud.appwrite.io/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
@@ -45,5 +46,6 @@
   "optional_host_permissions": [
     "https://*/*",
     "http://*/*"
-  ]
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmXLOASNB2GRrIuGYrzgobaaElhSGPfU9apSRiIWOC6UkEKZPCRpxrjzAlbbUT5KsUb21AisIvzGdEGpr8v7bT124tfx+3GpESyngh5FSXsvd56sH18XvifFUH3vxapSErmF6e9M71KiAHc2H5iPOZ9FX+/5DxpVkjU+qqtW9GkGbqw60dVknwSh5gS6tdawdGbz9uaetkOnELY3CX0nnOP4TQpixueBMm9Fdq05wgy6vMCos4q5Ep9qQUpGFrFlJ/5mv6Mg9PtWOMv8qWDPm9yfTYX/k23u+u+rzKmhibppVbQU7BrtKZDXojtpjiPh2h87Te0mOReodEJyKILUgcQIDAQAB"
 }
