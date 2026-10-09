@@ -1,6 +1,7 @@
 // Popup: one open mail → one task (title/note editable), or several mails
 // ticked in the list → one task each. Project defaults to the Inbox (GTD:
 // everything lands there first; planning moves it later). Alt+Shift+T opens it.
+// "Anlegen" hands the job to background.js and closes immediately.
 
 const $ = (id) => document.getElementById(id);
 const titleEl = $('title');
@@ -46,12 +47,8 @@ function fillProjects(projects) {
 
 async function loadProjects() {
   fillProjects(await cachedProjects());
-  try {
-    const fresh = await fetchProjects();
-    if (fresh) fillProjects(fresh);
-  } catch (e) {
-    console.warn('Projektliste nicht aktualisiert', e);
-  }
+  const res = await chrome.runtime.sendMessage({ type: 'refreshProjects' });
+  if (res && res.projects) fillProjects(res.projects);
 }
 
 function showBatch(items) {
@@ -73,6 +70,10 @@ function showBatch(items) {
 }
 
 async function loadEmail() {
+  if (!(await signedInAs())) {
+    setStatus('Einmal anmelden: Optionen öffnen (Link unten).', 'err');
+    return;
+  }
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !PROTON_URL.test(tab.url || '')) {
     setStatus('Bitte Proton Mail öffnen.', 'err');
@@ -117,18 +118,14 @@ async function add() {
     }
     tasks = [{ title, note: noteEl.value.trim() }];
   }
-  const projectId = projectEl.value || null;
-  const where = projectId ? `„${projectEl.selectedOptions[0].textContent}“` : 'die Inbox';
+  // Hand over and close at once — the background sends it (badge ✓, or a
+  // notification if something went wrong).
   addBtn.disabled = true;
-  setStatus('Wird an SelfManaged übergeben…');
-  const res = await deliverTask({ tasks, today: todayEl.checked, projectId });
-  if (res.ok) {
-    const what = tasks.length === 1 ? 'Aufgabe' : `${tasks.length} Aufgaben`;
-    setStatus(`✓ ${what} in ${where}${todayEl.checked ? ', für Heute' : ''}`, 'ok');
-    setTimeout(() => window.close(), 1400);
-  } else {
-    setStatus(res.error, 'err');
-  }
+  await chrome.runtime.sendMessage({
+    type: 'deliver',
+    job: { tasks, today: todayEl.checked, projectId: projectEl.value || null },
+  });
+  window.close();
 }
 
 addBtn.addEventListener('click', add);

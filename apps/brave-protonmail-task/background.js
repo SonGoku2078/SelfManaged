@@ -1,14 +1,15 @@
-// Proton Mail → SelfManaged without the popup:
-// - Right-click → "Als Aufgabe zu SelfManaged (Inbox)" / "… für Heute ☀️"
-// - Alt+Shift+M → straight into the Inbox
-// With several mails ticked in the list, each becomes its own task.
-// The icon badge shows the result (✓ / !).
+// Does the actual sending, so the popup can close at once ("übergeben,
+// vergessen"). Entry points:
+// - popup → message { type: 'deliver', job }
+// - right-click → "Als Aufgabe zu SelfManaged (Inbox)" / "… für Heute ☀️"
+// - Alt+Shift+M → Inbox
+// Ticked list mails become one task each. The icon badge shows … / ✓; only a
+// failure speaks up (badge ! + a notification saying what to do).
 //
 // The menu is not limited by documentUrlPatterns: the mail text sits in an
-// about:blank iframe, which never matches "https://mail.proton.me/*", so the
-// entry was missing exactly where you right-click a mail. Instead the entries
-// are shown only while a Proton tab is active. (In the message LIST Proton
-// replaces the browser menu with its own — no extension can add to that one.)
+// about:blank iframe that never matches "https://mail.proton.me/*". Entries
+// are shown only while a Proton tab is active instead. (In the message LIST
+// Proton replaces the browser menu with its own — use Alt+Shift+M there.)
 importScripts('shared.js');
 
 const MENU_INBOX = 'sm-add-inbox';
@@ -31,54 +32,86 @@ async function syncMenuVisibility() {
   }
 }
 
-chrome.runtime.onInstalled.addListener(createMenus);
+chrome.runtime.onInstalled.addListener((details) => {
+  createMenus();
+  // First install: sign in once.
+  if (details.reason === 'install') chrome.runtime.openOptionsPage();
+});
 chrome.runtime.onStartup.addListener(createMenus);
 chrome.tabs.onActivated.addListener(() => void syncMenuVisibility());
 chrome.tabs.onUpdated.addListener((_id, change) => { if (change.url) void syncMenuVisibility(); });
 chrome.windows.onFocusChanged.addListener(() => void syncMenuVisibility());
 
-function badge(text, color) {
+// Several jobs may overlap (send, send, send): count them for the badge.
+let running = 0;
+let badgeTimer = null;
+function badge(text, color, clearAfterMs) {
+  clearTimeout(badgeTimer);
   chrome.action.setBadgeBackgroundColor({ color });
   chrome.action.setBadgeText({ text });
-  setTimeout(() => chrome.action.setBadgeText({ text: '' }), 4000);
+  if (clearAfterMs) badgeTimer = setTimeout(() => chrome.action.setBadgeText({ text: '' }), clearAfterMs);
 }
 
-async function addFromTab(tab, { today, selectionText }) {
-  if (!tab || !PROTON_URL.test(tab.url || '')) {
-    badge('!', '#b91c1c');
-    return;
-  }
-  badge('…', '#6b7280');
+function fail(message) {
+  badge('!', '#b91c1c', 15000);
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icon.png',
+    title: 'SelfManaged – nicht übergeben',
+    message,
+  });
+}
+
+async function send(job) {
+  if (!job.tasks.length) return fail('Keine Mail offen oder angehakt.');
+  running++;
+  badge(running > 1 ? String(running) : '…', '#6b7280');
   try {
-    const mail = await extractFromTab(tab.id);
-    if (!mail) throw new Error('E-Mail konnte nicht gelesen werden.');
-    let tasks;
-    if (mail.checked.length > 1 || (mail.checked.length === 1 && !mail.hasOpenMail)) {
-      // Several mails ticked in the list → one task each.
-      tasks = mail.checked.map((it) => ({ title: it.subject, note: buildListNote(it) }));
-    } else if (mail.hasOpenMail) {
-      // Right-clicking a marked passage: that passage is the note.
-      if (selectionText && !mail.selected) mail.selected = selectionText;
-      tasks = [{ title: mail.subject, note: buildNote(mail) }];
-    } else {
-      throw new Error('Keine Mail offen oder angehakt.');
-    }
-    // No project here: GTD — everything lands in the Inbox first.
-    const res = await deliverTask({ tasks, today, projectId: null });
-    badge(res.ok ? '✓' : '!', res.ok ? '#2b8a3e' : '#b91c1c');
+    await deliverTask(job);
+    if (--running === 0) badge('✓', '#2b8a3e', 3000);
   } catch (e) {
-    console.error('SelfManaged: Aufgabe aus Mail fehlgeschlagen', e);
-    badge('!', '#b91c1c');
+    running--;
+    console.error('SelfManaged: Übergabe fehlgeschlagen', e);
+    if (e instanceof NotSignedIn) {
+      fail('Bitte einmal in den Optionen der Erweiterung anmelden — dann nochmals senden.');
+      chrome.runtime.openOptionsPage();
+    } else {
+      fail(`${e.message || e} — die Mail(s) bitte nochmals senden.`);
+    }
   }
 }
+
+async function sendFromTab(tab, { today, selectionText }) {
+  if (!tab || !PROTON_URL.test(tab.url || '')) return fail('Bitte in Proton Mail verwenden.');
+  let mail;
+  try {
+    mail = await extractFromTab(tab.id);
+  } catch (e) {
+    return fail(`Proton-Seite nicht lesbar: ${e.message || e}`);
+  }
+  if (!mail) return fail('E-Mail konnte nicht gelesen werden.');
+  // No project here: GTD — everything lands in the Inbox first.
+  await send({ tasks: tasksFromMail(mail, selectionText), today, projectId: null });
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg && msg.type === 'deliver') {
+    void send(msg.job);
+    reply({ queued: true }); // popup closes right away
+  } else if (msg && msg.type === 'refreshProjects') {
+    fetchProjects().then((p) => reply({ projects: p }), () => reply({ projects: null }));
+    return true; // async reply
+  }
+  return false;
+});
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== MENU_INBOX && info.menuItemId !== MENU_TODAY) return;
-  void addFromTab(tab, { today: info.menuItemId === MENU_TODAY, selectionText: info.selectionText });
+  void sendFromTab(tab, { today: info.menuItemId === MENU_TODAY, selectionText: info.selectionText });
 });
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command !== 'add-inbox') return;
   const target = tab || (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
-  void addFromTab(target, { today: false });
+  void sendFromTab(target, { today: false });
 });

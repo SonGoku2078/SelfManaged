@@ -1,70 +1,72 @@
 # SelfManaged – Proton Mail → Aufgabe (Brave/Chromium-Erweiterung)
 
-Macht aus der gerade offenen Proton-Mail mit einem Klick eine Aufgabe in
-SelfManaged. Manifest V3, läuft in Brave, Chrome und Edge.
+Mails in Proton Mail anhaken → senden → vergessen. Jede Mail wird eine Aufgabe
+in SelfManaged, **direkt online**, ohne App-Tab. Manifest V3, läuft in Brave,
+Chrome und Edge.
 
 ## Nutzung
 
 Alles landet standardmäßig in der **Inbox** (GTD: erst sammeln, beim Planen
 einem Projekt zuordnen). Es wird kein Projekt „Inbox“ angelegt.
 
-- **Eine Mail:** Mail öffnen, dann
-  - **Rechtsklick in den Mail-Text** → „Als Aufgabe zu SelfManaged (Inbox)“ /
-    „… für Heute ☀️“ — ohne Fenster, das Icon zeigt kurz ✓, oder
-  - **Alt+Shift+M** → direkt in die Inbox, oder
-  - **Icon / Alt+Shift+T** → Titel, Notiz und **Projekt** wählen, Enter.
 - **Mehrere Mails:** in der Proton-Liste **anhaken**, dann
-  - **Icon / Alt+Shift+T** → Liste prüfen, **Projekt** wählen (Vorgabe Inbox),
-    „N Aufgaben anlegen“, oder
-  - **Alt+Shift+M** → alle direkt in die Inbox.
-  Je Mail eine Aufgabe: Betreff als Titel, Absender + Link zur Mail als Notiz.
+  - **Alt+Shift+M** → alle in die Inbox, ohne Fenster, oder
+  - **Icon / Alt+Shift+T** → Projekt wählen (Vorgabe 📥 Inbox) → Enter.
+- **Eine offene Mail:** Rechtsklick in den Mail-Text → „Als Aufgabe zu
+  SelfManaged (Inbox)“ / „… für Heute ☀️“, oder Alt+Shift+M, oder das Icon
+  (Titel/Notiz/Projekt anpassen).
 - **Text markieren** vor dem Klick → nur der markierte Teil landet in der Notiz.
 
+Das Fenster schließt sofort; gesendet wird im Hintergrund. Das Icon zeigt
+kurz ✓. Nur wenn etwas schiefgeht, gibt es ein **!** und eine Meldung.
+In der App erscheinen die Aufgaben beim nächsten Abgleich (Fensterwechsel
+oder spätestens nach einer Minute).
+
+Je Mail: Betreff als Titel; Notiz mit Absender, Link zurück zur Mail und —
+bei einer offenen Mail — dem Mail-Text.
+
 *In der Mail-Liste* ersetzt Proton das Rechtsklick-Menü durch sein eigenes —
-dort Alt+Shift+M oder das Icon nutzen.
+dort Alt+Shift+M oder das Icon nutzen. Kürzel ändern: `brave://extensions/shortcuts`.
+
+## Einrichtung (einmalig)
+
+1. **Appwrite: Erweiterung als Plattform eintragen** (nur einmal, für alle
+   Geräte): Appwrite-Konsole → Projekt *selfmanaged-prod* → **Overview** →
+   **Add platform** → **Web** (bzw. *Chrome extension*) → Hostname bzw.
+   Extension-ID:
+
+   ```
+   mhejhliajgbncbdcjhnbbniakhbgipjk
+   ```
+
+   Die ID ist fest (Schlüssel `key` in `manifest.json`) — unabhängig davon, in
+   welchem Ordner die Erweiterung liegt.
+2. `brave://extensions` → **Entwicklermodus** an → **Entpackte Erweiterung
+   laden** → diesen Ordner wählen. Erweiterung anpinnen.
+3. Die Optionen öffnen sich: mit dem **SelfManaged-Konto anmelden**.
+   Gespeichert wird nur die Sitzung, nie das Passwort.
+
+Nach einem Update dieses Ordners in `brave://extensions` auf ↻ klicken.
 
 ## Funktionsweise
 
-Die Erweiterung übergibt die Aufgabe an die **SelfManaged-Web-App in diesem
-Browser** per Deep-Link:
+Die Erweiterung ruft dieselbe API-Funktion auf wie die App
+(`apps/functions/api`, über die Appwrite Functions Execution API — wie der
+MCP-Server in `apps/mcp/src/appwriteApi.ts`):
 
-```
-<App-URL>/#/add?title=<Betreff>&note=<Notiz>[&project=<id>][&heute=1]
-<App-URL>/#/add?tasks=[{"title":…,"note":…},…][&project=<id>]
-```
+1. `GET /api/tasks` → höchste Nummer (der gespeicherte Zähler ist unzuverlässig),
+2. je Mail `POST /api/tasks` (gleiche Felder wie `addTask` in `src/store.ts`),
+3. `PATCH /api/settings { nextTaskNumber }`.
 
-Ist ein SelfManaged-Tab offen, wird er im Hintergrund wiederverwendet, sonst
-öffnet sich einer im Hintergrund. Die App (`parseAddTaskHash` in
-`src/config.ts`) legt die Aufgabe an und speichert sie über ihre normale
-Sync-Warteschlange — auch offline. Danach entfernt sie den Link aus der
-Adresszeile; daran erkennt die Erweiterung „angekommen“.
+Die Sitzung liegt als `X-Fallback-Cookies` in `chrome.storage.local`.
 
-Die Projektliste liest die Erweiterung aus dem Offline-Speicher der App im
-App-Tab (`tm-cache`).
-
-Darum braucht die Erweiterung **kein Passwort und keinen Token**: Appwrite
-erlaubt API-Aufrufe ohnehin nur von der eigenen App-Seite aus.
-
-## Installation (einmalig)
-
-1. In Brave einmal die SelfManaged-Web-App öffnen und **anmelden**
-   (`https://selfmanaged-prod-6aaa45fb.appwrite.network`).
-2. `brave://extensions` öffnen → oben rechts **Entwicklermodus** einschalten.
-3. **Entpackte Erweiterung laden** → diesen Ordner
-   (`apps/brave-protonmail-task`) wählen. Erweiterung anpinnen.
-4. Fertig — Standard-Ziel ist PROD. Für Tests unter **Optionen** eine andere
-   App-URL setzen (z. B. `http://localhost:5173`).
-
-Tastenkürzel ändern: `brave://extensions/shortcuts`.
-
-Nach einem Update dieses Ordners in `brave://extensions` bei der Erweiterung
-auf ↻ (Neu laden) klicken.
+**Testserver:** In den Optionen unter „Für Tests: anderer Server“ eine URL wie
+`http://127.0.0.1:5173` setzen → ohne Anmeldung direkt an deren `/api`.
 
 ## Grenzen
 
 - Die Selektoren in `extract.js` sind Protons eigene `data-testid`s
-  (aus ProtonMail/WebClients, Stand 2026-10-09). Ändert Proton sie, fällt
-  der Betreff auf den Tab-Titel zurück; dann `extract.js` nachziehen.
-- Ist die Web-App abgemeldet, holt die Erweiterung den App-Tab nach vorn;
-  nach dem Anmelden wird die Aufgabe automatisch angelegt (nicht nochmals
-  klicken, sonst entsteht sie doppelt).
+  (ProtonMail/WebClients, Stand 2026-10-09). Ändert Proton sie, fällt der
+  Betreff auf den Tab-Titel zurück; dann `extract.js` nachziehen.
+- Angehakte Mails liefern Betreff, Absender und Link, aber keinen Mail-Text
+  (der steht erst beim Öffnen im Browser).

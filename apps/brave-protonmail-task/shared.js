@@ -1,21 +1,101 @@
-// Shared by popup.js and background.js (importScripts): read the open mail,
-// build the task, hand it to the SelfManaged web app.
+// Shared by popup.js, options.js and background.js (importScripts): read the
+// open mail, build the tasks, send them straight to the SelfManaged server.
 //
-// Delivery goes through the app itself — the "#/add?…" deep link — so the
-// task is saved by the signed-in app with its normal sync queue. The
-// extension never holds a password or token, and Appwrite's origin check
-// (only the app's own site may call the API) stays intact.
+// Online, no app tab: the extension signs in once (options page) as your
+// SelfManaged user and calls the same API function the app uses, through the
+// Appwrite Functions Execution API (like apps/mcp/src/appwriteApi.ts). Only
+// the session is kept — never the password. Appwrite accepts this origin
+// because the extension (fixed ID via manifest "key") is registered as a Web
+// platform with hostname = extension ID.
+//
+// Test/LAN mode: with a server URL set in the options (e.g. the dev app
+// http://127.0.0.1:5173) the same /api/* routes are called directly.
 
-const DEFAULT_APP_URL = 'https://selfmanaged-prod-6aaa45fb.appwrite.network';
+const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
+const APPWRITE_PROJECT_ID = '6aaa45fb0024f97b2b00';
+const APPWRITE_FUNCTION_ID = 'selfmanaged-api';
 const PROTON_URL = /^https:\/\/mail\.proton\.me\//;
-// Fresh tab: page load + sign-in check + first render can take a while.
-const RECEIVE_TIMEOUT_MS = 20000;
+const SELF_MEMBER_ID = 'u-me';
 
-async function getAppUrl() {
-  const { appUrl } = await chrome.storage.sync.get('appUrl');
-  return (appUrl || DEFAULT_APP_URL).trim().replace(/\/+$/, '');
+class NotSignedIn extends Error {}
+
+async function getServerUrl() {
+  const { serverUrl } = await chrome.storage.sync.get('serverUrl');
+  return (serverUrl || '').trim().replace(/\/+$/, '');
 }
 
+// ── Appwrite session (X-Fallback-Cookies, stored in chrome.storage.local) ──
+async function appwriteFetch(path, init = {}) {
+  const { session } = await chrome.storage.local.get('session');
+  const res = await fetch(`${APPWRITE_ENDPOINT}${path}`, {
+    ...init,
+    credentials: 'omit',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Appwrite-Project': APPWRITE_PROJECT_ID,
+      ...(session ? { 'X-Fallback-Cookies': session } : {}),
+      ...(init.headers || {}),
+    },
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+  if (res.status === 401) throw new NotSignedIn((data && data.message) || 'Nicht angemeldet');
+  if (!res.ok) throw new Error((data && data.message) || `Appwrite ${res.status}`);
+  return { data, res };
+}
+
+async function signIn(email, password) {
+  await chrome.storage.local.remove('session');
+  const { data, res } = await appwriteFetch('/account/sessions/email', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  const fallback = res.headers.get('X-Fallback-Cookies');
+  if (!fallback) throw new Error('Appwrite lieferte keine Sitzung zurück.');
+  await chrome.storage.local.set({ session: fallback, account: data && data.providerUid ? data.providerUid : email });
+}
+
+async function signOut() {
+  try { await appwriteFetch('/account/sessions/current', { method: 'DELETE' }); } catch { /* already gone */ }
+  await chrome.storage.local.remove(['session', 'account', 'projects']);
+}
+
+async function signedInAs() {
+  if (await getServerUrl()) return 'Testserver';
+  const { session, account } = await chrome.storage.local.get(['session', 'account']);
+  return session ? account || 'angemeldet' : null;
+}
+
+// One /api/* call, PROD via the Execution API, test server directly.
+async function api(path, method = 'GET', body) {
+  const server = await getServerUrl();
+  if (server) {
+    const res = await fetch(`${server}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
+    return res.status === 204 ? null : res.json();
+  }
+  const { session } = await chrome.storage.local.get('session');
+  if (!session) throw new NotSignedIn('Nicht angemeldet');
+  const { data } = await appwriteFetch(`/functions/${APPWRITE_FUNCTION_ID}/executions`, {
+    method: 'POST',
+    body: JSON.stringify({
+      body: body === undefined ? '' : JSON.stringify(body),
+      async: false,
+      path,
+      method,
+    }),
+  });
+  if (data.responseStatusCode === 401) throw new NotSignedIn('Sitzung abgelaufen');
+  if (data.responseStatusCode >= 400) throw new Error(`API ${path}: ${data.responseStatusCode}`);
+  return data.responseBody ? JSON.parse(data.responseBody) : null;
+}
+
+// ── Mail → task text ──────────────────────────────────────────────────────
 async function extractFromTab(tabId) {
   const [res] = await chrome.scripting.executeScript({ target: { tabId }, files: ['extract.js'] });
   return (res && res.result) || null;
@@ -38,108 +118,74 @@ function buildListNote(item) {
   return head.join('  \n');
 }
 
-// One or more tasks, all into the same project (null = Inbox, GTD default).
-function addHash({ tasks, today, projectId }) {
-  const q = new URLSearchParams();
-  if (tasks.length === 1) {
-    q.set('title', tasks[0].title);
-    if (tasks[0].note) q.set('note', tasks[0].note);
-  } else {
-    q.set('tasks', JSON.stringify(tasks.map((t) => ({ title: t.title, note: t.note || undefined }))));
+// Single open mail, or every ticked list entry (one task each).
+function tasksFromMail(mail, selectionText) {
+  if (mail.checked.length > 1 || (mail.checked.length === 1 && !mail.hasOpenMail)) {
+    return mail.checked.map((it) => ({ title: it.subject, note: buildListNote(it) }));
   }
-  if (projectId) q.set('project', projectId);
-  if (today) q.set('heute', '1');
-  return `#/add?${q.toString()}`;
+  if (!mail.hasOpenMail) return [];
+  if (selectionText && !mail.selected) mail.selected = selectionText;
+  return [{ title: mail.subject, note: buildNote(mail) }];
 }
 
-// Main app tab of this app (not an extra "?fenster=" window), if one is open.
-async function findAppTab(appUrl) {
-  const tabs = await chrome.tabs.query({ url: `${appUrl}/*` });
-  return tabs.find((t) => !/[?&]fenster=/.test(t.url || '')) || null;
+// ── Create on the server ──────────────────────────────────────────────────
+const localDateKey = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Same shape as addTask in src/store.ts. Inbox = projectId null (GTD).
+function newTask({ title, note }, number, { projectId, today }, now) {
+  const iso = now.toISOString();
+  const todayDate = today ? localDateKey(now) : null;
+  return {
+    id: `task-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+    number,
+    title,
+    description: note || '',
+    projectId: projectId || null,
+    parentId: null,
+    sectionId: null,
+    dueDate: null,
+    startMinutes: null,
+    durationMin: null,
+    priority: 'medium',
+    categoryIds: [],
+    completed: false,
+    starred: !!todayDate, // Heute implies Next Action (app invariant)
+    someday: false,
+    thisWeek: false,
+    todayDate,
+    assigneeIds: [SELF_MEMBER_ID],
+    recurrence: 'none',
+    recurrenceEnd: null,
+    linkedProjectId: null,
+    sortOrder: 0,
+    createdAt: iso,
+    updatedAt: iso,
+  };
 }
 
-// The app clears the hash right after it created the task.
-async function waitForReceipt(tabId) {
-  const until = Date.now() + RECEIVE_TIMEOUT_MS;
-  while (Date.now() < until) {
-    await new Promise((r) => setTimeout(r, 400));
-    let tab;
-    try {
-      tab = await chrome.tabs.get(tabId);
-    } catch {
-      return false; // tab closed
-    }
-    if (tab.status === 'complete' && !(tab.url || '').includes('#/add?')) return true;
-  }
-  return false;
+// job = { tasks: [{ title, note }], today, projectId }. Numbers continue after
+// the highest existing one (the stored counter is unreliable). The app shows
+// the tasks on its next sync (window focus / within a minute).
+async function deliverTask(job) {
+  const existing = await api('/api/tasks');
+  let next = 1 + existing.reduce((m, t) => (typeof t.number === 'number' && t.number > m ? t.number : m), 0);
+  const now = new Date();
+  for (const t of job.tasks) await api('/api/tasks', 'POST', newTask(t, next++, job, now));
+  try { await api('/api/settings', 'PATCH', { nextTaskNumber: next }); } catch { /* counter is advisory */ }
+  return job.tasks.length;
 }
 
-async function waitLoaded(tabId) {
-  const until = Date.now() + RECEIVE_TIMEOUT_MS;
-  while (Date.now() < until) {
-    const tab = await chrome.tabs.get(tabId);
-    if (tab.status === 'complete') return;
-    await new Promise((r) => setTimeout(r, 300));
-  }
-}
-
-// Projects of the signed-in app, read from its offline cache (tm-cache) in the
-// app tab — no API access needed. Cached in the extension for an instant list.
-// Returns null when the app has no data yet (signed out / first start).
+// Projects for the popup list, cached for an instant display.
 async function fetchProjects() {
-  const appUrl = await getAppUrl();
-  let tab = await findAppTab(appUrl);
-  if (!tab) tab = await chrome.tabs.create({ url: `${appUrl}/`, active: false });
-  await waitLoaded(tab.id);
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => {
-      try {
-        const snap = JSON.parse(localStorage.getItem('tm-cache') || 'null');
-        if (!snap || !Array.isArray(snap.projects)) return null;
-        return snap.projects
-          .filter((p) => p && !p.archived)
-          .map((p) => ({ id: p.id, name: p.name, kind: p.kind, active: p.active, pinned: !!p.pinned }));
-      } catch {
-        return null;
-      }
-    },
-  });
-  const projects = res && res.result;
-  if (projects) await chrome.storage.local.set({ projects });
+  const projects = (await api('/api/projects'))
+    .filter((p) => p && !p.archived)
+    .map((p) => ({ id: p.id, name: p.name, kind: p.kind, active: p.active, pinned: !!p.pinned }));
+  await chrome.storage.local.set({ projects });
   return projects;
 }
 
 async function cachedProjects() {
   const { projects } = await chrome.storage.local.get('projects');
   return Array.isArray(projects) ? projects : [];
-}
-
-// Returns { ok: true } or { ok: false, error }. Never steals focus on success;
-// on failure the app tab is brought up (usually: sign-in needed).
-// job = { tasks: [{ title, note }], today, projectId }
-async function deliverTask(job) {
-  const appUrl = await getAppUrl();
-  const hash = addHash(job);
-  let tab = await findAppTab(appUrl);
-  if (tab) {
-    const base = (tab.url || appUrl).split('#')[0];
-    // Same document, new hash → the app's hashchange handler takes it.
-    tab = await chrome.tabs.update(tab.id, { url: base + hash });
-  } else {
-    tab = await chrome.tabs.create({ url: `${appUrl}/${hash}`, active: false });
-  }
-  if (await waitForReceipt(tab.id)) return { ok: true };
-  try {
-    await chrome.tabs.update(tab.id, { active: true });
-    if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true });
-  } catch {
-    /* tab gone */
-  }
-  // The link stays in that tab: once signed in, the app still creates the
-  // task — so no "try again" (that would add it twice).
-  return {
-    ok: false,
-    error: 'SelfManaged ist noch nicht bereit — bitte im geöffneten Tab anmelden, die Aufgabe wird danach angelegt.',
-  };
 }

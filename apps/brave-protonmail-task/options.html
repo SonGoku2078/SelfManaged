@@ -8,16 +8,12 @@
         font-family: system-ui, sans-serif;
         max-width: 460px;
         margin: 40px auto;
+        padding: 0 16px;
         color: #1f2329;
       }
-      h1 {
-        font-size: 18px;
-      }
-      label {
-        display: block;
-        font-size: 13px;
-        margin: 16px 0 4px;
-      }
+      h1 { font-size: 18px; }
+      h2 { font-size: 15px; margin-top: 28px; }
+      label { display: block; font-size: 13px; margin: 12px 0 4px; }
       input {
         width: 100%;
         box-sizing: border-box;
@@ -27,7 +23,7 @@
         padding: 8px;
       }
       button {
-        margin-top: 16px;
+        margin-top: 14px;
         background: #2b8a3e;
         color: #fff;
         border: none;
@@ -37,34 +33,45 @@
         font-weight: 600;
         cursor: pointer;
       }
-      .saved {
-        color: #2b8a3e;
-        font-size: 13px;
-        margin-left: 10px;
-      }
-      p {
-        font-size: 13px;
-        color: #6b7280;
-      }
+      button.secondary { background: #e5e7eb; color: #1f2329; }
+      p, .msg { font-size: 13px; color: #6b7280; }
+      .msg.ok { color: #2b8a3e; }
+      .msg.err { color: #b91c1c; }
+      details { margin-top: 32px; font-size: 13px; }
     </style>
   </head>
   <body>
-    <h1>SelfManaged – Verbindung</h1>
-    <p>
-      Adresse der SelfManaged-Web-App. Standard ist die Produktion
-      (<code>https://selfmanaged-prod-6aaa45fb.appwrite.network</code>); zum Testen z. B.
-      <code>http://localhost:5173</code>. Leer lassen = Standard.
-    </p>
-    <p>
-      Die Aufgabe wird von der Web-App gespeichert, in der du in diesem Browser angemeldet
-      bist — die Erweiterung selbst kennt kein Passwort.
-    </p>
-    <label for="appUrl">App-URL</label>
-    <input id="appUrl" type="url" placeholder="https://selfmanaged-prod-6aaa45fb.appwrite.network" />
-    <div>
-      <button id="save">Speichern</button>
-      <span class="saved" id="saved" hidden>Gespeichert ✓</span>
+    <h1>SelfManaged – Proton Mail</h1>
+
+    <div id="signedIn" hidden>
+      <p class="msg ok">✓ Angemeldet als <strong id="who"></strong>. Fertig — Mails anhaken und senden.</p>
+      <button id="logout" class="secondary">Abmelden</button>
     </div>
+
+    <form id="loginForm" hidden>
+      <p>
+        Einmal mit deinem SelfManaged-Konto anmelden. Gespeichert wird nur die Sitzung,
+        nicht das Passwort. Danach gehen Mails direkt online an SelfManaged.
+      </p>
+      <label for="email">E-Mail</label>
+      <input id="email" type="email" autocomplete="username" required />
+      <label for="password">Passwort</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Anmelden</button>
+    </form>
+    <p class="msg" id="msg"></p>
+
+    <details>
+      <summary>Für Tests: anderer Server</summary>
+      <p>
+        Leer = Produktion (Standard). Für die Entwicklung z. B. <code>http://127.0.0.1:5173</code> —
+        dann ohne Anmeldung direkt an dessen <code>/api</code>.
+      </p>
+      <label for="serverUrl">Server-URL</label>
+      <input id="serverUrl" type="url" placeholder="(Produktion)" />
+      <button id="saveServer" class="secondary">Speichern</button>
+    </details>
+
     <script src="shared.js"></script>
     <script src="options.js"></script>
   </body>
