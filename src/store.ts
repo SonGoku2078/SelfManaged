@@ -34,7 +34,7 @@ import {
 } from './api';
 import { enqueue, flush as flushOutbox, pendingCount, writeSeq } from './api/outbox';
 import { saveSnapshot, loadSnapshot } from './api/cache';
-import { buildOccurrence } from './recurrence';
+import { buildOccurrence, nextDueAfterCompletion } from './recurrence';
 import { orderSections } from './selectors';
 import { nextPomodoroPhase, pomodoroDayKey } from './pomodoro';
 
@@ -1213,7 +1213,8 @@ export const useStore = create<AppState>()((set, get) => ({
         let spawned: Task | null = null;
         let spawnedSubs: Task[] = [];
         if (before && completing && before.recurrence !== 'none' && before.dueDate) {
-          const nextDue = nextRecurrence(before.dueDate, before);
+          // Missed occurrences are skipped, not replayed one by one.
+          const nextDue = nextDueAfterCompletion(before.dueDate, new Date(), (d) => nextRecurrence(d, before));
           if (!before.recurrenceEnd || nextDue <= before.recurrenceEnd) {
             // Carry the subtasks into the new occurrence (fix #20).
             const subs = get().tasks.filter((x) => x.parentId === before.id);
