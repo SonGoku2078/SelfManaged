@@ -327,6 +327,48 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// "In neuem Fenster öffnen" (src/windows.ts): the app opens its own URL with
+// ?fenster=… — that becomes another app window (same session, preload and
+// icon). Everything else is an external link → OS browser, not Electron.
+function isAppWindowUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.origin === new URL(currentTarget).origin && u.searchParams.has('fenster');
+  } catch {
+    return false;
+  }
+}
+
+function attachWindowOpenHandler(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAppWindowUrl(url)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 1100,
+          height: 800,
+          minWidth: 600,
+          minHeight: 400,
+          title: 'SelfManaged',
+          show: !process.env.TM_E2E_HIDDEN,
+          ...(process.platform === 'linux' && app.isPackaged
+            ? { icon: path.join(process.resourcesPath, 'icon.png') }
+            : {}),
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js'),
+          },
+        },
+      };
+    }
+    void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  // Extra windows get the same rules (their own links, further windows).
+  win.webContents.on('did-create-window', (child) => attachWindowOpenHandler(child));
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1400,
@@ -357,11 +399,7 @@ function createWindow(): BrowserWindow {
   )
     win.webContents.openDevTools();
 
-  // Open external links in the OS browser, not Electron.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
-    return { action: 'deny' };
-  });
+  attachWindowOpenHandler(win);
 
   // Server died between health check and load (or a mid-session reload failed):
   // back to the fallback page and keep polling instead of a white screen.

@@ -3,6 +3,7 @@ import { flush as flushOutbox, pendingCount } from './api/outbox';
 import { apiFetch } from './api/client';
 import { IS_APPWRITE_PROD } from './appwrite/client';
 import { useStore } from './store';
+import { onRemoteChange } from './windowSync';
 
 // Wie oft im Hintergrund frische Daten geholt werden, wenn das Fenster offen
 // liegen bleibt. Fokuswechsel laedt unabhaengig davon sofort (#86).
@@ -16,6 +17,9 @@ const OFFLINE_AFTER_FAILS = 2;
 // Fokus/Sichtbarkeit loest hoechstens so oft einen Pull aus — Fensterwechsel
 // passieren staendig, jeder Pull sind 9 API-Calls (#108).
 const FOCUS_PULL_MIN_MS = 30_000;
+// Aenderung aus einem anderen Fenster: kurz sammeln, dann einmal nachladen.
+const REMOTE_DEBOUNCE_MS = 1500;
+const REMOTE_RETRY_MS = 3000;
 
 export type RefreshState = 'idle' | 'refreshing' | 'done' | 'error';
 
@@ -137,6 +141,25 @@ export function useServerSync(): ServerSync {
     return () => {
       document.removeEventListener('visibilitychange', onFocus);
       window.removeEventListener('focus', onFocus);
+    };
+  }, [pull]);
+
+  // --- Andere Fenster (src/windows.ts) haben etwas gespeichert: nachladen ---
+  // Entprellt, damit Tippen im anderen Fenster nicht jede Sekunde einen Pull
+  // ausloest; laufende Eingaben hier warten, bis sie fertig sind.
+  useEffect(() => {
+    let timer: number | undefined;
+    const schedule = (ms: number) => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (isEditing()) schedule(REMOTE_RETRY_MS);
+        else void pull();
+      }, ms);
+    };
+    const off = onRemoteChange(() => schedule(REMOTE_DEBOUNCE_MS));
+    return () => {
+      off();
+      window.clearTimeout(timer);
     };
   }, [pull]);
 

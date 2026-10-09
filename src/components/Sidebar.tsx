@@ -3,6 +3,8 @@ import { useStore, DEFAULT_NAV_ORDER } from '../store';
 import type { ViewType } from '../types';
 import { readTaskIds } from '../dnd';
 import UsersIcon from './UsersIcon';
+import { useWindowMenu } from './WindowMenu';
+import { WINDOW_VIEWS } from '../windows';
 import './Sidebar.css';
 
 // Icon + label for every reorderable main menu (order comes from settings.navOrder).
@@ -43,6 +45,10 @@ export default function Sidebar() {
   const navOrder = useStore((s) => s.settings.navOrder);
   const reorderNav = useStore((s) => s.reorderNav);
   const updateTask = useStore((s) => s.updateTask);
+  const windowMenu = useWindowMenu();
+  // Right-click → "In neuem Fenster öffnen" on views that stand on their own.
+  const windowMenuFor = (id: ViewType) =>
+    WINDOW_VIEWS.has(id) ? windowMenu.onContextMenu({ kind: 'view', view: id }) : undefined;
 
   // A task dragged from the list onto Next Week / Someday gets the matching flag.
   const taskDropFlag = (id: ViewType): Partial<{ thisWeek: boolean; someday: boolean }> | null =>
@@ -101,6 +107,7 @@ export default function Sidebar() {
                 overId === id ? 'nav-drop' : ''
               } ${dragId === id ? 'nav-dragging' : ''}`}
               onClick={() => handleNav(id)}
+              onContextMenu={windowMenuFor(id)}
               title={item.label}
               draggable
               onDragStart={() => setDragId(id)}
@@ -180,6 +187,7 @@ export default function Sidebar() {
             key={item.id}
             className={`sidebar-item ${currentView === item.id ? 'active' : ''}`}
             onClick={() => handleNav(item.id)}
+            onContextMenu={windowMenuFor(item.id)}
             title={item.label}
           >
             <span className="sidebar-icon">{item.icon}</span>
@@ -187,6 +195,7 @@ export default function Sidebar() {
           </button>
         ))}
       </div>
+      {windowMenu.element}
     </div>
   );
 }

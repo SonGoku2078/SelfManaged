@@ -3,6 +3,7 @@ import { useStore, DEFAULT_PALETTE } from '../store';
 import type { Project } from '../types';
 import { readTaskIds } from '../dnd';
 import ClearableInput from './ClearableInput';
+import { useWindowMenu } from './WindowMenu';
 import './ProjectsPanel.css';
 
 const EMPTY_LABELS: Record<string, string> = {};
@@ -41,6 +42,7 @@ export default function ProjectsPanel({
   const setProjectsPanelWidth = useStore((s) => s.setProjectsPanelWidth);
 
   const someday = mode === 'someday';
+  const windowMenu = useWindowMenu();
 
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState<false | 'project' | 'area'>(false);
@@ -129,6 +131,7 @@ export default function ProjectsPanel({
       onClick={(e) =>
         e.ctrlKey || e.metaKey ? toggleProjectSelected(p.id) : selectProject(p.id)
       }
+      onContextMenu={windowMenu.onContextMenu({ kind: 'project', projectId: p.id })}
       onDragStart={() => setDragId(p.id)}
       onDragOver={(e) => {
         // Accept either a project (reorder) or a task (move into this project).
@@ -394,6 +397,7 @@ export default function ProjectsPanel({
       </div>
 
       <div className="projects-resize" title="Breite ziehen" onMouseDown={startResize} />
+      {windowMenu.element}
     </div>
   );
 }

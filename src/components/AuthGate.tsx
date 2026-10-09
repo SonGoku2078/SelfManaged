@@ -3,7 +3,6 @@ import type { FormEvent, ReactNode } from 'react';
 import { AppwriteException } from 'appwrite';
 import { account, clearUserJwt, IS_APPWRITE_PROD } from '../appwrite/client';
 import { loadSnapshot } from '../api/cache';
-import { pendingCount } from '../api/outbox';
 import { useStore } from '../store';
 import './AuthGate.css';
 
@@ -76,25 +75,6 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = async () => {
-    // Logout clears the local outbox — unsynced edits would be lost.
-    const pending = pendingCount();
-    if (
-      pending > 0 &&
-      !window.confirm(`${pending} Änderung(en) sind noch nicht synchronisiert und gehen beim Abmelden verloren. Trotzdem abmelden?`)
-    ) return;
-    setError('');
-    try {
-      await account.deleteSession({ sessionId: 'current' });
-    } finally {
-      clearUserJwt();
-      localStorage.removeItem('tm-cache');
-      localStorage.removeItem('tm-outbox');
-      localStorage.removeItem('tm-outbox-dead');
-      window.location.reload();
-    }
-  };
-
   if (!IS_APPWRITE_PROD) return children;
   if (state === 'checking') return <main className="auth-screen"><p>Session wird geprüft …</p></main>;
   if (state === 'signed-out') {
@@ -112,10 +92,6 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  return (
-    <div className="has-prod-logout">
-      <button className="prod-logout" type="button" onClick={logout}>Abmelden</button>
-      {children}
-    </div>
-  );
+  // Abmelden lives in Einstellungen → Konto (src/appwrite/logout.ts).
+  return children;
 }

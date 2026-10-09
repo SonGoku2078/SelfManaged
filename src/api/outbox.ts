@@ -21,6 +21,8 @@ import {
   settingsApi,
 } from './index';
 import { isTimeout } from './client';
+import { IS_EXTRA_WINDOW } from '../windows';
+import { announceChange } from '../windowSync';
 
 export interface Op {
   id: string;
@@ -32,18 +34,77 @@ export interface Op {
   attempts?: number;
 }
 
-const KEY = 'tm-outbox';
+const MAIN_KEY = 'tm-outbox';
 const DEAD_KEY = 'tm-outbox-dead';
 const MAX_ATTEMPTS = 5;
 
+// Extra windows (src/windows.ts) keep their own queue: every window holds its
+// queue in memory and rewrites its key on each change, so a shared key would
+// let one window overwrite the other's pending (offline) edits. When an extra
+// window closes, the main window adopts whatever is still left in its key.
+const WINDOW_PREFIX = 'tm-outbox:w-';
+const ALIVE_PREFIX = 'tm-outbox-alive:w-';
+// No heartbeat for this long → the window crashed; its queue is fair game.
+// Generous on purpose: background windows get their timers throttled.
+const STALE_MS = 10 * 60_000;
+const windowId = IS_EXTRA_WINDOW
+  ? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  : '';
+const KEY = IS_EXTRA_WINDOW ? `${WINDOW_PREFIX}${windowId}` : MAIN_KEY;
+
 let queue: Op[] = load();
 let listeners: Array<(n: number) => void> = [];
+
+if (IS_EXTRA_WINDOW) {
+  const beat = () => {
+    try { localStorage.setItem(`${ALIVE_PREFIX}${windowId}`, String(Date.now())); } catch { /* ignore */ }
+  };
+  beat();
+  window.setInterval(beat, 60_000);
+  // Closing: hand the rest of the queue over right away (alive = 0).
+  window.addEventListener('pagehide', () => {
+    try {
+      if (queue.length) {
+        localStorage.setItem(KEY, JSON.stringify(queue));
+        localStorage.setItem(`${ALIVE_PREFIX}${windowId}`, '0');
+      } else {
+        localStorage.removeItem(KEY);
+        localStorage.removeItem(`${ALIVE_PREFIX}${windowId}`);
+      }
+    } catch { /* ignore */ }
+  });
+}
+
+// Main window only: append the queues of closed/crashed extra windows.
+function adoptOrphans(): void {
+  if (IS_EXTRA_WINDOW) return;
+  let adopted = false;
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith(WINDOW_PREFIX)) continue;
+      const id = key.slice(WINDOW_PREFIX.length);
+      const alive = Number(localStorage.getItem(`${ALIVE_PREFIX}${id}`) ?? 0);
+      if (Date.now() - alive < STALE_MS) continue;
+      const ops = JSON.parse(localStorage.getItem(key) ?? '[]') as Op[];
+      if (Array.isArray(ops) && ops.length) {
+        queue = [...queue, ...ops];
+        adopted = true;
+      }
+      localStorage.removeItem(key);
+      localStorage.removeItem(`${ALIVE_PREFIX}${id}`);
+    }
+  } catch {
+    /* ignore */
+  }
+  if (adopted) persist();
+}
 
 // Recover dead-lettered ops that failed for a TRANSIENT reason (server 5xx /
 // network) — those may now succeed. Ops that failed permanently (4xx, e.g. a
 // 404 update for a task that no longer exists on the server) stay dead so they
 // don't cycle back into the queue on every reload.
 (function recoverDeadLetters() {
+  if (IS_EXTRA_WINDOW) return; // the main window owns the dead letters
   try {
     const raw = localStorage.getItem(DEAD_KEY);
     if (!raw) return;
@@ -82,7 +143,8 @@ function isReorder(op: { kind: string }): boolean {
 function persist(): void {
   const data = JSON.stringify(queue);
   try {
-    localStorage.setItem(KEY, data);
+    if (IS_EXTRA_WINDOW && !queue.length) localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, data);
   } catch {
     // Storage quota: the display cache (tm-cache, several MB) is expendable —
     // unsynced edits are not. Drop it and retry, else the queue would only
@@ -209,6 +271,7 @@ let flushPromise: Promise<void> | null = null;
 // pull server state before the pending create had reached the server).
 export function flush(): Promise<void> {
   if (!flushPromise) {
+    adoptOrphans();
     flushPromise = drain().finally(() => { flushPromise = null; });
   }
   return flushPromise;
@@ -231,6 +294,16 @@ async function drain(): Promise<void> {
   // Reorders already pushed to the back in this run — meeting one again at
   // the head means everything else has had its turn.
   const deferred = new Set<Op>();
+  // Something reached the server → the other open windows should reload.
+  let sent = false;
+  try {
+    await drainQueue(deferred, () => { sent = true; });
+  } finally {
+    if (sent) announceChange();
+  }
+}
+
+async function drainQueue(deferred: Set<Op>, onSent: () => void): Promise<void> {
   while (queue.length) {
     const op = queue[0];
     if (deferred.has(op)) break;
@@ -245,6 +318,7 @@ async function drain(): Promise<void> {
     try {
       await handler(op.payload);
       drop(op);
+      onSent();
     } catch (e) {
       const status = httpStatus(e);
       // No answer in time ≠ unreachable: the server may be alive but busy.
