@@ -1,11 +1,10 @@
-// Popup logic: read the open Protonmail e-mail, let the user tweak the task,
-// then open the SelfManaged app via a "#/add" deep link.
-
-const DEFAULT_APP_URL = 'http://localhost:5173';
+// Popup: read the open Proton mail, let the user tweak the task, then hand it
+// to SelfManaged (shared.js). Alt+Shift+T opens it.
 
 const $ = (id) => document.getElementById(id);
 const titleEl = $('title');
 const noteEl = $('note');
+const todayEl = $('today');
 const addBtn = $('add');
 const statusEl = $('status');
 
@@ -14,52 +13,52 @@ function setStatus(msg, kind) {
   statusEl.className = 'status' + (kind ? ' ' + kind : '');
 }
 
-async function getAppUrl() {
-  const { appUrl } = await chrome.storage.sync.get('appUrl');
-  return (appUrl || DEFAULT_APP_URL).replace(/\/+$/, '');
-}
-
 async function loadEmail() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !/^https:\/\/mail\.proton\.me\//.test(tab.url || '')) {
-    setStatus('Bitte eine Protonmail-E-Mail öffnen.', 'err');
+  if (!tab || !PROTON_URL.test(tab.url || '')) {
+    setStatus('Bitte eine E-Mail in Proton Mail öffnen.', 'err');
     return;
   }
   try {
-    const [res] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['extract.js'],
-    });
-    const data = res && res.result;
-    if (!data) {
+    const mail = await extractFromTab(tab.id);
+    if (!mail) {
       setStatus('E-Mail konnte nicht gelesen werden.', 'err');
       return;
     }
-    titleEl.value = data.subject;
-    const noteParts = [];
-    if (data.sender) noteParts.push('Von: ' + data.sender);
-    if (data.url) noteParts.push(data.url);
-    if (data.snippet) noteParts.push('\n' + data.snippet);
-    noteEl.value = noteParts.join('\n');
+    titleEl.value = mail.subject;
+    noteEl.value = buildNote(mail);
     addBtn.disabled = false;
+    titleEl.focus();
+    titleEl.select();
   } catch (e) {
     setStatus('Zugriff auf die Seite fehlgeschlagen: ' + e.message, 'err');
   }
 }
 
-addBtn.addEventListener('click', async () => {
+async function add() {
   const title = titleEl.value.trim();
   if (!title) {
     setStatus('Titel darf nicht leer sein.', 'err');
     return;
   }
-  const appUrl = await getAppUrl();
-  const q = new URLSearchParams({ title });
-  if (noteEl.value.trim()) q.set('note', noteEl.value.trim());
-  const url = `${appUrl}/#/add?${q.toString()}`;
-  await chrome.tabs.create({ url });
-  setStatus('Aufgabe an SelfManaged übergeben ✓', 'ok');
   addBtn.disabled = true;
+  setStatus('Wird an SelfManaged übergeben…');
+  const res = await deliverTask({ title, note: noteEl.value.trim(), today: todayEl.checked });
+  if (res.ok) {
+    setStatus(todayEl.checked ? '✓ In SelfManaged für Heute angelegt' : '✓ In der SelfManaged-Inbox angelegt', 'ok');
+    setTimeout(() => window.close(), 1200);
+  } else {
+    setStatus(res.error, 'err');
+  }
+}
+
+addBtn.addEventListener('click', add);
+// Enter in the title = add (Ctrl+Enter anywhere).
+titleEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !addBtn.disabled) add();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !addBtn.disabled) add();
 });
 
 $('opts').addEventListener('click', (e) => {

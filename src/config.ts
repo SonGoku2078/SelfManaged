@@ -14,23 +14,26 @@ export const parseTaskHash = (hash: string): number | null => {
 };
 
 // Deep link used by external integrations (e.g. the Brave/Protonmail extension)
-// to create a task: "#/add?title=…&note=…". Note is optional (URL-encoded).
+// to create a task: "#/add?title=…&note=…&heute=1". Note is optional
+// (URL-encoded); heute=1 plans it for today (☀️) instead of only the Inbox.
 export interface AddTaskLink {
   title: string;
   note?: string;
+  today?: boolean;
 }
 export const addTaskHash = (link: AddTaskLink) => {
   const q = new URLSearchParams({ title: link.title });
   if (link.note) q.set('note', link.note);
+  if (link.today) q.set('heute', '1');
   return `#/add?${q.toString()}`;
 };
 export const parseAddTaskHash = (hash: string): AddTaskLink | null => {
   const prefix = '#/add?';
   if (!hash.startsWith(prefix)) return null;
   const q = new URLSearchParams(hash.slice(prefix.length));
-  const title = q.get('title');
+  const title = q.get('title')?.trim();
   if (!title) return null;
-  return { title, note: q.get('note') ?? undefined };
+  return { title, note: q.get('note') ?? undefined, today: q.get('heute') === '1' };
 };
 
 // Base for Nozbe Classic API calls. In dev this is the Vite proxy path (`/nozbe-api`,

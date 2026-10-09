@@ -51,15 +51,21 @@
   <body>
     <h1>SelfManaged – Verbindung</h1>
     <p>
-      Adresse der SelfManaged-App. Lokal meist
-      <code>http://localhost:5173</code>; bei einem Deployment die jeweilige URL.
+      Adresse der SelfManaged-Web-App. Standard ist die Produktion
+      (<code>https://selfmanaged-prod-6aaa45fb.appwrite.network</code>); zum Testen z. B.
+      <code>http://localhost:5173</code>. Leer lassen = Standard.
+    </p>
+    <p>
+      Die Aufgabe wird von der Web-App gespeichert, in der du in diesem Browser angemeldet
+      bist — die Erweiterung selbst kennt kein Passwort.
     </p>
     <label for="appUrl">App-URL</label>
-    <input id="appUrl" type="url" placeholder="http://localhost:5173" />
+    <input id="appUrl" type="url" placeholder="https://selfmanaged-prod-6aaa45fb.appwrite.network" />
     <div>
       <button id="save">Speichern</button>
       <span class="saved" id="saved" hidden>Gespeichert ✓</span>
     </div>
+    <script src="shared.js"></script>
     <script src="options.js"></script>
   </body>
 </html>
