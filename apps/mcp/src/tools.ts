@@ -1,5 +1,6 @@
-// Die 17 Werkzeuge des MCP-Servers (#88, seit #100 mit task_bearbeiten/
-// task_loeschen, seit #130 mit Subtasks). Verdrahtet api.ts + logic.ts.
+// Die 15 Werkzeuge des MCP-Servers (#88, seit #100 mit task_bearbeiten/
+// task_loeschen, seit #130 legt task_anlegen auch Subtasks an).
+// Verdrahtet api.ts + logic.ts.
 // Jede Antwort: vorlesbarer deutscher Text + structuredContent; Fehler als
 // isError mit Klartext (AC-18) — nie ein Prozessabsturz.
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -8,7 +9,6 @@ import { ApiError, type TaskApi } from './api.js';
 import {
   LogicError,
   assertSubtaskParent,
-  buildSubtasks,
   completePatch,
   dateKey,
   duePatch,
@@ -18,15 +18,12 @@ import {
   formatTaskLine,
   groupDayPlan,
   inboxTasks,
-  nestSubtasks,
-  planNewTask,
   nextSteps,
-  nextTaskNumber,
+  planNewTask,
   planPatch,
   resolveProject,
   searchTasks,
   starPatch,
-  subtasksOf,
   taskSummary,
   tasksOfProject,
   unplanPatch,
@@ -71,12 +68,11 @@ const TASK_REF = {
   taskId: z.string().optional().describe('Task-id (z. B. task-abc-123)'),
   taskNummer: z.number().int().positive().optional().describe('Task-Nummer #N (wie in der App angezeigt)'),
 };
-// Adressierung eines übergeordneten Tasks (für Subtasks).
+// Übergeordneter Task: der neue Task wird dessen Subtask (#130).
 const PARENT_REF = {
   uebergeordneteTaskId: z.string().optional().describe('Task-id des übergeordneten Tasks → der neue Task wird dessen Subtask'),
   uebergeordneteTaskNummer: z.number().int().positive().optional().describe('Task-Nummer #N des übergeordneten Tasks → der neue Task wird dessen Subtask'),
 };
-const SUBTASK_TITLES = z.array(z.string().min(1)).min(1).describe('Titel der Subtasks, in der gewünschten Reihenfolge');
 // Adressierung eines Projekts.
 const PROJECT_REF = {
   projektId: z.string().optional().describe('Projekt-id'),
@@ -89,15 +85,8 @@ const GTD_HINWEIS =
 
 export function registerTools(server: McpServer, api: TaskApi): void {
   const projectName = (projects: ApiProject[], id: string | null) => projects.find((p) => p.id === id)?.name ?? null;
-  // Subtasks, deren Parent in derselben Liste steht, werden darunter eingerückt.
-  const lines = (tasks: ApiTask[], projects: ApiProject[], todayKey: string) => {
-    const ids = new Set(tasks.map((t) => t.id));
-    return tasks
-      .map((t) => `${t.parentId && ids.has(t.parentId) ? '  ↳ ' : '- '}${formatTaskLine(t, projectName(projects, t.projectId), todayKey, api.baseUrl)}`)
-      .join('\n');
-  };
-  const subLines = (tasks: ApiTask[], pn: string | null, todayKey: string) =>
-    tasks.map((t) => `  ↳ ${formatTaskLine(t, pn, todayKey, api.baseUrl)}`).join('\n');
+  const lines = (tasks: ApiTask[], projects: ApiProject[], todayKey: string) =>
+    tasks.map((t) => `- ${formatTaskLine(t, projectName(projects, t.projectId), todayKey, api.baseUrl)}`).join('\n');
   const summaries = (tasks: ApiTask[], projects: ApiProject[]) => tasks.map((t) => taskSummary(t, projectName(projects, t.projectId), api.baseUrl));
 
   // Gemeinsamer Abschluss der Schreibwerkzeuge: Task per Referenz finden, PATCH, Antwort.
@@ -161,13 +150,13 @@ export function registerTools(server: McpServer, api: TaskApi): void {
     'tasks_auflisten',
     {
       title: 'Tasks eines Projekts',
-      description: 'Alle offenen Tasks eines Projekts in App-Reihenfolge, mit Kennzeichen (★, geplant, fällig, Priorität, Someday, wartet). Subtasks stehen eingerückt (↳) unter ihrem Task. Projekt per projektId oder projektName.',
+      description: 'Alle offenen Tasks eines Projekts in App-Reihenfolge, mit Kennzeichen (★, geplant, fällig, Priorität, Someday, wartet). Projekt per projektId oder projektName.',
       inputSchema: { ...PROJECT_REF, inklusiveErledigte: z.boolean().optional().describe('true = erledigte Tasks mit auflisten') },
     },
     guard(async ({ projektId, projektName: name, inklusiveErledigte }) => {
       const [projects, tasks] = await Promise.all([api.getProjects(), api.getTasks()]);
       const project = resolveProject(projects, { id: projektId, name });
-      const list = nestSubtasks(tasksOfProject(tasks, project.id, !!inklusiveErledigte));
+      const list = tasksOfProject(tasks, project.id, !!inklusiveErledigte);
       const todayKey = dateKey(new Date());
       const text = list.length
         ? `Projekt „${project.name}" (${list.length} Tasks):\n${lines(list, projects, todayKey)}`
@@ -230,7 +219,7 @@ export function registerTools(server: McpServer, api: TaskApi): void {
     },
     guard(async () => {
       const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
-      const list = nestSubtasks(inboxTasks(tasks));
+      const list = inboxTasks(tasks);
       const text = list.length ? `Inbox (${list.length}):\n${lines(list, projects, dateKey(new Date()))}` : 'Die Inbox ist leer.';
       return ok(text, { tasks: summaries(list, projects) });
     }),
@@ -258,7 +247,7 @@ export function registerTools(server: McpServer, api: TaskApi): void {
       title: 'Task anlegen',
       description:
         'Legt einen neuen Task an. Ohne Projekt landet er in der Inbox — frag den Nutzer vorher, in welches Projekt er soll, wenn er es nicht gesagt hat. faelligAm = Termin, planenFuer = Tagesplan-Marker (setzt automatisch ★). ' +
-        'Subtasks (Unteraufgaben): mit subtasks=[…] legst du den Task gleich mit seinen Subtasks an. Mit uebergeordneteTaskNummer/-Id wird der neue Task selbst Subtask eines bestehenden Tasks (erbt dessen Projekt). Subtasks gibt es nur eine Ebene tief. Für weitere Subtasks an einem bestehenden Task: subtasks_anlegen.',
+        'Subtask: mit uebergeordneteTaskNummer (oder -Id) wird der neue Task Subtask dieses Tasks — wie in der App angehängt, erbt dessen Projekt, nur eine Ebene tief. Für einen Task mit mehreren Subtasks: erst den Task anlegen, dann jeden Subtask einzeln mit dessen Nummer.',
       inputSchema: {
         title: z.string().min(1).describe('Titel des Tasks'),
         ...PROJECT_REF,
@@ -267,69 +256,24 @@ export function registerTools(server: McpServer, api: TaskApi): void {
         prioritaet: PRIORITY.optional().describe('low | medium | high (Standard medium)'),
         kategorien: z.array(z.string()).optional().describe('Kategorienamen (müssen existieren)'),
         planenFuer: DATE.optional().describe('Tagesplan-Marker für dieses Datum (z. B. morgen)'),
-        subtasks: SUBTASK_TITLES.optional(),
         ...PARENT_REF,
       },
     },
-    guard(async ({ title, projektId, projektName: name, beschreibung, faelligAm, prioritaet, kategorien, planenFuer, subtasks, uebergeordneteTaskId, uebergeordneteTaskNummer }) => {
+    guard(async ({ title, projektId, projektName: name, beschreibung, faelligAm, prioritaet, kategorien, planenFuer, uebergeordneteTaskId, uebergeordneteTaskNummer }) => {
       const [projects, tasks, cats] = await Promise.all([api.getProjects(), api.getTasks(), api.getCategories()]);
       const parent =
         uebergeordneteTaskId || uebergeordneteTaskNummer
           ? assertSubtaskParent(findTask(tasks, { id: uebergeordneteTaskId, number: uebergeordneteTaskNummer }))
           : null;
-      const plan = planNewTask(
-        { title, projektId, projektName: name, beschreibung, faelligAm, prioritaet, kategorien, planenFuer, subtasks, parent },
+      const { task, project } = planNewTask(
+        { title, projektId, projektName: name, beschreibung, faelligAm, prioritaet, kategorien, planenFuer, parent },
         { tasks, projects, categories: cats },
       );
-      const created = await api.createTask(plan.task);
-      // Nacheinander, damit der Parent vor den Kindern existiert und die Reihenfolge stimmt.
-      const createdSubs: ApiTask[] = [];
-      for (const s of plan.subtasks) createdSubs.push(await api.createTask(s));
-      const pn = plan.project?.name ?? null;
-      const todayKey = dateKey(new Date());
+      const created = await api.createTask(task);
+      const pn = project?.name ?? null;
       const where = parent ? ` — Subtask von #${parent.number} ${parent.title}` : pn ? '' : ' — in der Inbox (kein Projekt)';
-      const subText = createdSubs.length ? `\nMit ${createdSubs.length} Subtasks:\n${subLines(createdSubs, pn, todayKey)}` : '';
-      const text = `Angelegt: ${formatTaskLine(created, pn, todayKey, api.baseUrl)}${where}${subText}`;
-      return ok(text, { task: taskSummary(created, pn, api.baseUrl), subtasks: createdSubs.map((t) => taskSummary(t, pn, api.baseUrl)) });
-    }),
-  );
-
-  server.registerTool(
-    'subtasks_anlegen',
-    {
-      title: 'Subtasks anlegen',
-      description: 'Hängt einem bestehenden Task einen oder mehrere Subtasks (Unteraufgaben) an — in der angegebenen Reihenfolge hinter die vorhandenen. Subtasks erben das Projekt des Tasks; nur eine Ebene tief (ein Subtask kann keine Subtasks bekommen).',
-      inputSchema: { ...TASK_REF, titel: SUBTASK_TITLES },
-    },
-    guard(async ({ taskId, taskNummer, titel }) => {
-      const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
-      const parent = findTask(tasks, { id: taskId, number: taskNummer });
-      const subs = buildSubtasks(parent, titel, { tasks, firstNumber: nextTaskNumber(tasks) });
-      const created: ApiTask[] = [];
-      for (const s of subs) created.push(await api.createTask(s));
-      const pn = projectName(projects, parent.projectId);
-      const todayKey = dateKey(new Date());
-      const text = `${created.length} Subtask${created.length === 1 ? '' : 's'} angelegt unter ${formatTaskLine(parent, pn, todayKey, api.baseUrl)}:\n${subLines(created, pn, todayKey)}`;
-      return ok(text, { task: taskSummary(parent, pn, api.baseUrl), subtasks: created.map((t) => taskSummary(t, pn, api.baseUrl)) });
-    }),
-  );
-
-  server.registerTool(
-    'subtasks_auflisten',
-    {
-      title: 'Subtasks eines Tasks',
-      description: 'Zeigt die Subtasks (Unteraufgaben) eines Tasks in App-Reihenfolge, standardmäßig inklusive erledigter (Kennzeichen „erledigt"). Subtasks sind normale Tasks mit eigener Nummer — abhaken, bearbeiten, löschen usw. per taskNummer wie bei jedem Task.',
-      inputSchema: { ...TASK_REF, nurOffene: z.boolean().optional().describe('true = erledigte Subtasks ausblenden') },
-    },
-    guard(async ({ taskId, taskNummer, nurOffene }) => {
-      const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
-      const parent = findTask(tasks, { id: taskId, number: taskNummer });
-      const list = subtasksOf(tasks, parent.id, !nurOffene);
-      const pn = projectName(projects, parent.projectId);
-      const todayKey = dateKey(new Date());
-      const head = formatTaskLine(parent, pn, todayKey, api.baseUrl);
-      const text = list.length ? `${head}\n${list.length} Subtasks:\n${subLines(list, pn, todayKey)}` : `${head}\nKeine ${nurOffene ? 'offenen ' : ''}Subtasks.`;
-      return ok(text, { task: taskSummary(parent, pn, api.baseUrl), subtasks: list.map((t) => taskSummary(t, pn, api.baseUrl)) });
+      const text = `Angelegt: ${formatTaskLine(created, pn, dateKey(new Date()), api.baseUrl)}${where}`;
+      return ok(text, { task: taskSummary(created, pn, api.baseUrl) });
     }),
   );
 
