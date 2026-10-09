@@ -107,23 +107,23 @@ async function loadEmail() {
 
 async function add() {
   if (!job || addBtn.disabled) return;
-  let tasks;
+  let what;
   if (job.mode === 'batch') {
-    tasks = job.items.map((it) => ({ title: it.subject, note: buildListNote(it) }));
+    what = { items: job.items }; // read in the background, with full content
   } else {
     const title = titleEl.value.trim();
     if (!title) {
       setStatus('Titel darf nicht leer sein.', 'err');
       return;
     }
-    tasks = [{ title, note: noteEl.value.trim() }];
+    what = { tasks: [{ title, note: noteEl.value.trim() }] };
   }
   // Hand over and close at once — the background sends it (badge ✓, or a
   // notification if something went wrong).
   addBtn.disabled = true;
   await chrome.runtime.sendMessage({
     type: 'deliver',
-    job: { tasks, today: todayEl.checked, projectId: projectEl.value || null },
+    job: { ...what, today: todayEl.checked, projectId: projectEl.value || null },
   });
   window.close();
 }

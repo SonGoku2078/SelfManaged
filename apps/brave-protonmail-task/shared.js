@@ -101,31 +101,75 @@ async function extractFromTab(tabId) {
   return (res && res.result) || null;
 }
 
-// Note: sender + link back to the mail, then the marked text or the mail body.
+// Note: link back to the mail first, then sender, then the mail itself
+// (Markdown from extract.js) — or only the marked passage.
 function buildNote(mail) {
   const head = [];
-  if (mail.sender) head.push(`**Von:** ${mail.sender}`);
   if (mail.url) head.push(`**Mail:** ${mail.url}`);
+  if (mail.sender) head.push(`**Von:** ${mail.sender}`);
   const text = mail.selected || mail.body;
-  return [head.join('  \n'), text].filter(Boolean).join('\n\n');
+  return [head.join('  \n'), text].filter(Boolean).join('\n\n---\n\n');
 }
 
-// Batch item from a ticked list entry: no body, just who + link.
-function buildListNote(item) {
-  const head = [];
-  if (item.sender) head.push(`**Von:** ${item.sender}`);
-  head.push(`**Mail:** ${item.url}`);
-  return head.join('  \n');
+// Ticked list entries: what the list shows, used if a mail can't be opened.
+function listMail(item) {
+  return { subject: item.subject, sender: item.sender, url: item.url, body: '', selected: '' };
 }
 
-// Single open mail, or every ticked list entry (one task each).
-function tasksFromMail(mail, selectionText) {
-  if (mail.checked.length > 1 || (mail.checked.length === 1 && !mail.hasOpenMail)) {
-    return mail.checked.map((it) => ({ title: it.subject, note: buildListNote(it) }));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Read ticked mails one by one in a minimized background window: Proton
+// decrypts a mail only when it is opened. The user's own tab is untouched.
+// Returns one mail object per item (falls back to the list data).
+async function readMails(items, onProgress) {
+  const OPEN_TIMEOUT_MS = 25000;
+  const win = await chrome.windows.create({ url: items[0].url, state: 'minimized', focused: false });
+  const tabId = win.tabs[0].id;
+  const mails = [];
+  try {
+    for (let i = 0; i < items.length; i++) {
+      if (onProgress) onProgress(i, items.length);
+      if (i > 0) await chrome.tabs.update(tabId, { url: items[i].url });
+      let mail = null;
+      const until = Date.now() + OPEN_TIMEOUT_MS;
+      while (Date.now() < until) {
+        await sleep(700);
+        try {
+          const m = await extractFromTab(tabId);
+          // Same mail, decrypted: body present (or the page settled without one).
+          if (m && m.hasOpenMail && m.bodyReady) { mail = m; break; }
+          if (m && m.hasOpenMail) mail = m;
+        } catch {
+          /* page still loading */
+        }
+      }
+      mails.push(
+        mail
+          ? { ...mail, subject: mail.subject || items[i].subject, sender: mail.sender || items[i].sender, url: items[i].url, selected: '' }
+          : listMail(items[i]),
+      );
+    }
+  } finally {
+    chrome.windows.remove(win.id).catch(() => {});
   }
-  if (!mail.hasOpenMail) return [];
+  return mails;
+}
+
+// What to send: { tasks } for the open mail, { items } for ticked list
+// entries (read later, in the background — see resolveTasks).
+function jobFromMail(mail, selectionText) {
+  if (mail.checked.length > 1 || (mail.checked.length === 1 && !mail.hasOpenMail)) {
+    return { items: mail.checked };
+  }
+  if (!mail.hasOpenMail) return { tasks: [] };
   if (selectionText && !mail.selected) mail.selected = selectionText;
-  return [{ title: mail.subject, note: buildNote(mail) }];
+  return { tasks: [{ title: mail.subject, note: buildNote(mail) }] };
+}
+
+async function resolveTasks(job, onProgress) {
+  if (!job.items) return job.tasks;
+  const mails = await readMails(job.items, onProgress);
+  return mails.map((m) => ({ title: m.subject, note: buildNote(m) }));
 }
 
 // ── Create on the server ──────────────────────────────────────────────────

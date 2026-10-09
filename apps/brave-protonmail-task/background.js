@@ -3,7 +3,8 @@
 // - popup → message { type: 'deliver', job }
 // - right-click → "Als Aufgabe zu SelfManaged (Inbox)" / "… für Heute ☀️"
 // - Alt+Shift+M → Inbox
-// Ticked list mails become one task each. The icon badge shows … / ✓; only a
+// Ticked list mails become one task each (opened in a minimized window to
+// read their content, see readMails). The icon badge shows … / ✓; only a
 // failure speaks up (badge ! + a notification saying what to do).
 //
 // The menu is not limited by documentUrlPatterns: the mail text sits in an
@@ -63,11 +64,13 @@ function fail(message) {
 }
 
 async function send(job) {
-  if (!job.tasks.length) return fail('Keine Mail offen oder angehakt.');
+  if (!(job.items || job.tasks).length) return fail('Keine Mail offen oder angehakt.');
   running++;
   badge(running > 1 ? String(running) : '…', '#6b7280');
   try {
-    await deliverTask(job);
+    // Ticked mails are opened one by one to read them: badge counts down.
+    const tasks = await resolveTasks(job, (i, n) => badge(`${n - i}`, '#6b7280'));
+    await deliverTask({ ...job, tasks });
     if (--running === 0) badge('✓', '#2b8a3e', 3000);
   } catch (e) {
     running--;
@@ -91,7 +94,7 @@ async function sendFromTab(tab, { today, selectionText }) {
   }
   if (!mail) return fail('E-Mail konnte nicht gelesen werden.');
   // No project here: GTD — everything lands in the Inbox first.
-  await send({ tasks: tasksFromMail(mail, selectionText), today, projectId: null });
+  await send({ ...jobFromMail(mail, selectionText), today, projectId: null });
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {

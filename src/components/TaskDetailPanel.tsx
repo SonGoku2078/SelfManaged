@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent } from 'react';
 import { marked } from 'marked';
+import { safeHtml } from '../safeHtml';
 import type { Task, Attachment } from '../types';
 import { useStore } from '../store';
 import { dateKey, isTodayFlagActive, countsAsToday, isImplicitToday } from '../selectors';
@@ -23,7 +24,7 @@ renderer.link = ({ href, title, text }) =>
 marked.setOptions({ renderer, breaks: true });
 
 function renderMarkdown(text: string): string {
-  return (marked.parse(text) as string)
+  return safeHtml(marked.parse(text) as string)
     .replace(/<p>\s*(<br\s*\/?>)?\s*<\/p>/g, '')
     .replace(/<li>\n?<p>([\s\S]*?)<\/p>\n?<\/li>/g, '<li>$1</li>');
 }
