@@ -86,3 +86,22 @@ export function recursOn(task: Task, day: Date): boolean {
       return false;
   }
 }
+
+// Due date of the occurrence that follows a completion: one step after the
+// stored date, then on past today. A weekly task left undone for six weeks and
+// checked off now must not respawn into each missed week (one click per week
+// to catch up) — the time has passed; the series resumes with the next date
+// after today. Completed on time or early, this is just the one step.
+// `step` advances one recurrence interval (nextRecurrence in store.ts).
+export function nextDueAfterCompletion(due: Date, now: Date, step: (d: Date) => Date): Date {
+  const dayNo = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000;
+  const today = dayNo(now);
+  let next = step(due);
+  // Bounded: a daily series 10 years overdue is ~3650 steps.
+  for (let i = 0; i < 10_000 && dayNo(next) <= today; i++) {
+    const after = step(next);
+    if (+after <= +next) break; // no progress (no recurrence) — never loop forever
+    next = after;
+  }
+  return next;
+}
