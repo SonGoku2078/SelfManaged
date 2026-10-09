@@ -32,6 +32,7 @@ import CompletionCalendar from './components/CompletionCalendar';
 import { parseTaskHash, parseAddTaskHash } from './config';
 import { onChange as outboxOnChange } from './api/outbox';
 import { useServerSync } from './useServerSync';
+import { WINDOW_TARGET, IS_EXTRA_WINDOW } from './windows';
 
 const VIEW_TITLES: Record<ViewType, string> = {
   inbox: 'Inbox',
@@ -122,6 +123,28 @@ function App() {
     }
     setSyncVisible(false);
   }, [pendingWrites]);
+
+  // Extra window (right-click → "In neuem Fenster öffnen"): boot straight into
+  // its view/project. A project waits until it is loaded — selectProject needs
+  // it to pick Projekte vs. Someday. Then the side panel goes away, so the
+  // window shows just that one list.
+  const windowInitDone = useRef(false);
+  useEffect(() => {
+    const target = WINDOW_TARGET;
+    if (!target || windowInitDone.current) return;
+    const state = useStore.getState();
+    if (target.kind === 'project') {
+      if (!projects.some((p) => p.id === target.projectId)) return;
+      state.selectProject(target.projectId);
+      state.setSidePanel('none');
+    } else {
+      const view = target.view;
+      state.setView(view);
+      // Same panels as the sidebar opens for these views.
+      state.setSidePanel(view === 'projects' || view === 'calendar' || view === 'someday' ? view : 'none');
+    }
+    windowInitDone.current = true;
+  }, [projects]);
 
   // Deep-link support: open the task referenced by #/t/<number> in the URL.
   useEffect(() => {
@@ -361,6 +384,11 @@ function App() {
           })
       : VIEW_TITLES[ui.currentView];
 
+  // Extra windows carry their list name in the title bar / taskbar.
+  useEffect(() => {
+    if (IS_EXTRA_WINDOW) document.title = `${headerTitle} – SelfManaged`;
+  }, [headerTitle]);
+
   const handleAddTask = () => {
     if (!newTaskTitle.trim()) return;
     const parsed = parseQuickAdd(newTaskTitle);
@@ -454,7 +482,8 @@ function App() {
         </div>
       ) : null}
       <div className="app-row">
-      <Sidebar />
+      {/* Extra windows stay on their one list — no main navigation. */}
+      {!IS_EXTRA_WINDOW && <Sidebar />}
       {ui.sidePanel === 'projects' && (
         <ErrorBoundary>
           <ProjectsPanel
@@ -567,7 +596,8 @@ function App() {
             >
               {refreshState === 'done' ? '✓' : refreshState === 'error' ? '✕' : '↻'}
             </button>
-            <PomodoroWidget />
+            {/* The timer runs in the main window only — else every window rings. */}
+            {!IS_EXTRA_WINDOW && <PomodoroWidget />}
             {showTotalsPill ? (
               <span
                 className="task-count task-count-totals"

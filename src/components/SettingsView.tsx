@@ -9,6 +9,7 @@ import { getBaseUrl } from '../api/client';
 import { calendarFeedApi } from '../api';
 import { copyToClipboard } from '../clipboard';
 import { account, IS_APPWRITE_PROD } from '../appwrite/client';
+import { logout } from '../appwrite/logout';
 import './SettingsView.css';
 
 const POMO_ALARM_OPTIONS = [
@@ -710,6 +711,12 @@ function AccountSection() {
         </button>
         {passwordStatus && <p className="settings-hint">{passwordStatus}</p>}
       </form>
+
+      <div className="settings-account-form">
+        <button className="btn" type="button" onClick={() => void logout()}>
+          Abmelden
+        </button>
+      </div>
     </section>
   );
 }
