@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SelfManaged – Proton Mail → Aufgabe",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Proton-Mails mit einem Klick als Aufgaben direkt an SelfManaged senden.",
   "permissions": [
     "activeTab",
