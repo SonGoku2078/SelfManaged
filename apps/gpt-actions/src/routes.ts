@@ -4,15 +4,13 @@
 // Logik aus apps/mcp, wiederverwendet — keine Duplizierung).
 // Seit #100: volles Task-CRUD (PATCH /tasks/:ref, DELETE /tasks/:ref) —
 // Projekte/Kategorien bleiben weiterhin nur lesbar, kein neuer Schreib-Pfad.
-// Seit #130: Subtasks (POST /tasks mit subtasks/uebergeordneterTask,
-// GET/POST /tasks/:ref/subtasks).
+// Seit #130: POST /tasks mit uebergeordneterTask legt einen Subtask an.
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { z, ZodError } from 'zod';
 import { ApiError, type TaskApi } from './api.js';
 import {
   LogicError,
-  buildSubtasks,
   completePatch,
   dateKey,
   duePatch,
@@ -21,15 +19,12 @@ import {
   findTask,
   groupDayPlan,
   inboxTasks,
-  nestSubtasks,
   nextSteps,
-  nextTaskNumber,
   planNewTask,
   planPatch,
   resolveProject,
   searchTasks,
   starPatch,
-  subtasksOf,
   taskSummary,
   tasksOfProject,
   unplanPatch,
@@ -146,7 +141,7 @@ export function buildRouter(api: TaskApi): Router {
       const inklusiveErledigte = isTrue(req.query.inklusiveErledigte);
       const [projects, tasks] = await Promise.all([api.getProjects(), api.getTasks()]);
       const project = resolveProjectRef(projects, req.params.ref);
-      const list = nestSubtasks(tasksOfProject(tasks, project.id, inklusiveErledigte));
+      const list = tasksOfProject(tasks, project.id, inklusiveErledigte);
       res.json({ projekt: { id: project.id, name: project.name }, tasks: summaries(list, projects) });
     }),
   );
@@ -183,7 +178,7 @@ export function buildRouter(api: TaskApi): Router {
     '/inbox',
     wrap(async (_req, res) => {
       const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
-      res.json({ tasks: summaries(nestSubtasks(inboxTasks(tasks)), projects) });
+      res.json({ tasks: summaries(inboxTasks(tasks), projects) });
     }),
   );
 
@@ -208,7 +203,6 @@ export function buildRouter(api: TaskApi): Router {
     prioritaet: PRIORITY.optional(),
     kategorien: z.array(z.string()).optional(),
     planenFuer: DATE.optional(),
-    subtasks: z.array(z.string().min(1)).min(1).optional(),
     uebergeordneterTask: z.string().min(1).optional(),
   });
 
@@ -218,41 +212,9 @@ export function buildRouter(api: TaskApi): Router {
       const body = CreateTaskBody.parse(req.body ?? {});
       const [projects, tasks, cats] = await Promise.all([api.getProjects(), api.getTasks(), api.getCategories()]);
       const parent = body.uebergeordneterTask ? resolveTaskRef(tasks, body.uebergeordneterTask) : null;
-      const plan = planNewTask({ ...body, parent }, { tasks, projects, categories: cats });
-      const created = await api.createTask(plan.task);
-      // Nacheinander, damit der Parent vor den Kindern existiert.
-      const createdSubs: ApiTask[] = [];
-      for (const s of plan.subtasks) createdSubs.push(await api.createTask(s));
-      const pn = plan.project?.name ?? null;
-      res.status(201).json({ task: taskSummary(created, pn, api.baseUrl), subtasks: createdSubs.map((t) => taskSummary(t, pn, api.baseUrl)) });
-    }),
-  );
-
-  router.get(
-    '/tasks/:ref/subtasks',
-    wrap(async (req, res) => {
-      const nurOffene = isTrue(req.query.nurOffene);
-      const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
-      const parent = resolveTaskRef(tasks, req.params.ref);
-      const pn = projectName(projects, parent.projectId);
-      const list = subtasksOf(tasks, parent.id, !nurOffene);
-      res.json({ task: taskSummary(parent, pn, api.baseUrl), subtasks: list.map((t) => taskSummary(t, pn, api.baseUrl)) });
-    }),
-  );
-
-  const SubtasksBody = z.object({ titel: z.array(z.string().min(1)).min(1, 'Bitte mindestens einen Subtask-Titel angeben.') });
-
-  router.post(
-    '/tasks/:ref/subtasks',
-    wrap(async (req, res) => {
-      const { titel } = SubtasksBody.parse(req.body ?? {});
-      const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
-      const parent = resolveTaskRef(tasks, req.params.ref);
-      const subs = buildSubtasks(parent, titel, { tasks, firstNumber: nextTaskNumber(tasks) });
-      const created: ApiTask[] = [];
-      for (const s of subs) created.push(await api.createTask(s));
-      const pn = projectName(projects, parent.projectId);
-      res.status(201).json({ task: taskSummary(parent, pn, api.baseUrl), subtasks: created.map((t) => taskSummary(t, pn, api.baseUrl)) });
+      const { task: newTask, project } = planNewTask({ ...body, parent }, { tasks, projects, categories: cats });
+      const created = await api.createTask(newTask);
+      res.status(201).json({ task: taskSummary(created, project?.name ?? null, api.baseUrl) });
     }),
   );
 

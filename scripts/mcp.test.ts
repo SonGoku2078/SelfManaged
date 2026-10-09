@@ -4,8 +4,8 @@
 // Run: npx tsx scripts/mcp.test.ts
 import assert from 'node:assert';
 import {
-  assertSubtaskParent, buildNewTask, buildSubtasks, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
-  groupDayPlan, inboxTasks, LogicError, nestSubtasks, nextSteps, nextTaskNumber, newTaskId, planNewTask, planPatch, subtasksOf,
+  assertSubtaskParent, buildNewTask, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
+  groupDayPlan, inboxTasks, LogicError, nextSteps, nextTaskNumber, newTaskId, planNewTask, planPatch,
   resolveCategories, resolveProject, searchTasks, tasksOfProject, taskSummary, taskUrl, unplanPatch,
   type ApiProject, type ApiTask,
 } from '../apps/mcp/src/logic';
@@ -162,44 +162,22 @@ assert.equal(taskSummary(task({ number: 7, title: 'X' })).url, null, 'ohne baseU
 
 // ── Subtasks (#130) ───────────────────────────────────────────────────────
 const st: ApiTask[] = [
-  task({ id: 'P', number: 20, title: 'Umzug', projectId: 'p-web', sortOrder: 0, createdAt: '2026-01-01T00:00:00.000Z' }),
-  task({ id: 'S1', number: 21, title: 'Kisten', projectId: 'p-web', parentId: 'P', sortOrder: 0, createdAt: '2026-01-02T00:00:00.000Z' }),
-  task({ id: 'S2', number: 22, title: 'Transporter', projectId: 'p-web', parentId: 'P', sortOrder: 1, completed: true, createdAt: '2026-01-03T00:00:00.000Z' }),
-  task({ id: 'Q', number: 23, title: 'Anderes', projectId: 'p-web', sortOrder: 1, createdAt: '2026-01-04T00:00:00.000Z' }),
+  task({ id: 'P', number: 20, title: 'Umzug', projectId: 'p-web' }),
+  task({ id: 'S1', number: 21, title: 'Kisten', projectId: 'p-web', parentId: 'P', sortOrder: 0 }),
+  task({ id: 'S2', number: 22, title: 'Transporter', projectId: 'p-web', parentId: 'P', sortOrder: 1 }),
 ];
-assert.deepEqual(subtasksOf(st, 'P').map((t) => t.id), ['S1', 'S2'], 'Subtasks in App-Reihenfolge');
-assert.deepEqual(subtasksOf(st, 'P', false).map((t) => t.id), ['S1'], 'nur offene');
-assert.throws(() => assertSubtaskParent(st[1]), /nur eine Ebene/, 'Subtask kann keine Subtasks bekommen');
-
-const subs = buildSubtasks(st[0], [' Adresse ummelden ', 'Schlüssel'], { tasks: st, firstNumber: 24, now });
-assert.equal(subs.length, 2);
-assert.deepEqual(subs.map((s) => s.title), ['Adresse ummelden', 'Schlüssel'], 'Titel getrimmt, Reihenfolge erhalten');
-assert.deepEqual(subs.map((s) => s.number), [24, 25], 'fortlaufende Nummern');
-assert.deepEqual(subs.map((s) => s.sortOrder), [2, 3], 'hinter den vorhandenen Geschwistern');
-assert.ok(subs.every((s) => s.parentId === 'P' && s.projectId === 'p-web'), 'parentId + Projekt vom Parent');
-assert.ok(subs.every((s) => s.starred === false && s.todayDate === null), 'Subtasks starten ohne ★/Plan');
-assert.throws(() => buildSubtasks(st[0], [], { tasks: st, firstNumber: 1 }), /mindestens einen/);
-assert.throws(() => buildSubtasks(st[0], ['ok', '  '], { tasks: st, firstNumber: 1 }), /nicht leer/);
-
 const ctx = { tasks: st, projects, categories: cats, now };
-const withSubs = planNewTask({ title: 'Reise', projektName: 'Finanzen', subtasks: ['Flug', 'Hotel'] }, ctx);
-assert.equal(withSubs.task.number, 24, 'Parent bekommt max+1');
-assert.equal(withSubs.task.parentId, null);
-assert.equal(withSubs.project?.id, 'p-fin');
-assert.deepEqual(withSubs.subtasks.map((s) => [s.number, s.parentId, s.projectId, s.sortOrder]), [[25, withSubs.task.id, 'p-fin', 0], [26, withSubs.task.id, 'p-fin', 1]], 'Subtasks hängen am neuen Task');
-
-const asSub = planNewTask({ title: 'Strom ummelden', parent: st[0] }, ctx);
+assert.equal(planNewTask({ title: 'Reise', projektName: 'Finanzen' }, ctx).task.parentId, null, 'ohne Parent: normaler Task');
+const asSub = planNewTask({ title: 'Strom ummelden', parent: st[0], faelligAm: '2026-09-20' }, ctx);
 assert.equal(asSub.task.parentId, 'P', 'neuer Task wird Subtask');
-assert.equal(asSub.task.projectId, 'p-web', 'erbt Projekt');
+assert.equal(asSub.task.projectId, 'p-web', 'erbt Projekt (wie store.addSubtask)');
 assert.equal(asSub.task.sortOrder, 2, 'hinter vorhandenen Subtasks');
+assert.equal(asSub.task.number, 23, 'normale Nummernvergabe');
 assert.equal(asSub.project?.id, 'p-web');
 assert.equal(planNewTask({ title: 'x', parent: st[0], projektId: 'p-web' }, ctx).task.parentId, 'P', 'gleiches Projekt angeben ist ok');
 assert.throws(() => planNewTask({ title: 'x', parent: st[0], projektName: 'Finanzen' }, ctx), /Projekt seines Tasks/);
-assert.throws(() => planNewTask({ title: 'x', parent: st[0], subtasks: ['y'] }, ctx), /nicht beides/);
 assert.throws(() => planNewTask({ title: 'x', parent: st[1] }, ctx), /nur eine Ebene/);
-
-assert.deepEqual(nestSubtasks([st[3], st[1], st[0]]).map((t) => t.id), ['Q', 'P', 'S1'], 'Subtask unter seinem Parent');
-assert.deepEqual(nestSubtasks([st[1], st[3]]).map((t) => t.id), ['S1', 'Q'], 'verwaister Subtask bleibt stehen');
+assert.throws(() => assertSubtaskParent(st[1]), /nur eine Ebene/);
 assert.match(formatTaskLine(st[1]), /Unteraufgabe/);
 assert.equal(taskSummary(st[1]).parentId, 'P');
 assert.equal(taskSummary(st[0]).parentId, null);
