@@ -3,6 +3,8 @@
 // Run: npx tsx scripts/sharefields.test.ts
 import assert from 'node:assert';
 import { deriveShareFields } from '../apps/mobile/src/shareFields';
+import { groupProjects } from '../apps/mobile/src/projectGroups';
+import type { Project } from '../apps/mobile/src/types';
 
 // Instagram/X: only a URL, no subject → empty title, URL in the note.
 let r = deriveShareFields({ text: 'https://instagram.com/p/ABC123' });
@@ -29,4 +31,19 @@ r = deriveShareFields({ text: 'Titelzeile\nZusatz\nhttps://x.com/status/9' });
 assert.strictEqual(r.title, 'Titelzeile', 'first line title');
 assert.ok(r.description.includes('https://x.com/status/9') && r.description.includes('Zusatz'), 'url + extra lines in note');
 
-console.log('✅ PASS — share fields: URL to note, title never a bare URL.');
+// Share project picker = desktop "Projekte" panel: store (manual) order, not
+// alphabetical; pinned first; areas separate; someday/archived out of the
+// main groups.
+const P = (id: string, extra: Partial<Project> = {}) =>
+  ({ id, name: id, color: '#000', kind: 'project', active: true, ...extra }) as Project;
+const g = groupProjects([
+  P('Zeta'), P('Alpha'), P('Pinned', { pinned: true }),
+  P('Area-Z', { kind: 'area' }), P('Area-A', { kind: 'area' }),
+  P('Someday', { active: false }), P('Old', { archived: true }),
+]);
+assert.deepStrictEqual(g.projects.map((p) => p.id), ['Pinned', 'Zeta', 'Alpha'], 'pinned first, then manual order');
+assert.deepStrictEqual(g.areas.map((p) => p.id), ['Area-Z', 'Area-A'], 'areas in manual order');
+assert.deepStrictEqual(g.someday.map((p) => p.id), ['Someday'], 'someday separate, archived gone');
+assert.deepStrictEqual(groupProjects([P('Zeta'), P('Alpha')], 'alp').projects.map((p) => p.id), ['Alpha'], 'search filters');
+
+console.log('✅ PASS — share fields: URL to note, title never a bare URL; project picker matches desktop.');

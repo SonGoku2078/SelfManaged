@@ -544,7 +544,32 @@ body {
   border: none; background: none; color: var(--text-primary);
   font-family: inherit; font-size: 15px; cursor: pointer; border-radius: 8px;
 }
+.m-share-projitem { display: flex; align-items: center; gap: 10px; }
+.m-share-projitem .m-dot { width: 10px; height: 10px; flex-shrink: 0; }
+.m-share-projname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-share-projitem.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.m-share-projgroup {
+  margin: 8px 0 2px; padding: 8px 12px 4px;
+  border-top: 1px solid var(--border-light);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--text-secondary);
+}
+.m-share-chosen { display: flex; align-items: center; gap: 6px; }
+/* Share sheet head: ✕ · title · Speichern — sticky so Save stays reachable
+   while the keyboard covers the bottom of the sheet. */
+.m-share-head {
+  position: sticky; top: -16px; z-index: 2;
+  margin: 0 -16px; padding: 8px 12px;
+  background: var(--main-bg); gap: 8px;
+}
+.m-share-headtitle { flex: 1; font-size: 17px; font-weight: 700; }
+.m-share-save {
+  min-height: 40px; padding: 0 18px;
+  border: none; border-radius: 20px;
+  background: var(--accent); color: #fff;
+  font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.m-share-save:disabled { opacity: 0.45; cursor: default; }
 /* Share sheet: ☀️ Heute / 🗓️ Next Week / ★ Next Action toggles. */
 .m-share-flags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .m-share-flag {

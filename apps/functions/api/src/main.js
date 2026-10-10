@@ -174,6 +174,77 @@ async function deleteAllRows(db, tableId, matchQuery) {
   }
 }
 
+// ── Task numbers (#N) ──────────────────────────────────────────────────────
+// Every client (desktop, phone, MCP, mail extension) picks the next number
+// from its own, possibly stale view of the data, so two devices creating a
+// task at about the same time sent the same #N — and this function stored it
+// verbatim (two different tasks #1775). The server is the only place that
+// sees every task, so it has the last word: a number already used by another
+// task is replaced by max+1, and the client adopts the number from the reply.
+async function tasksWithNumber(db, number) {
+  return (await db.listRows({ databaseId: DATABASE_ID, tableId: 'tasks', queries: [Query.equal('number', [number]), Query.limit(25)], total: false })).rows;
+}
+
+async function maxTaskNumber(db) {
+  const rows = (await db.listRows({ databaseId: DATABASE_ID, tableId: 'tasks', queries: [Query.orderDesc('number'), Query.limit(1)], total: false })).rows;
+  return rows.length ? Number(rows[0].number) || 0 : 0;
+}
+
+async function freeTaskNumber(db, rowId, requested) {
+  const n = Number(requested);
+  if (Number.isInteger(n) && n > 0 && (await tasksWithNumber(db, n)).every((r) => r.$id === rowId)) return n;
+  return (await maxTaskNumber(db)) + 1;
+}
+
+// Two creates racing each other can both pass freeTaskNumber before either is
+// written. Check again after the write: the older row keeps the number, the
+// newer one moves on to max+1 (repeat in case it raced yet another create).
+async function settleTaskNumber(db, row) {
+  let current = row;
+  for (let i = 0; i < 5; i++) {
+    const same = await tasksWithNumber(db, current.number);
+    const oldest = same.sort((a, b) => String(a.$createdAt).localeCompare(String(b.$createdAt)) || a.$id.localeCompare(b.$id))[0];
+    if (!oldest || oldest.$id === current.$id) return current;
+    current = await db.updateRow({ databaseId: DATABASE_ID, tableId: 'tasks', rowId: current.$id, data: { number: (await maxTaskNumber(db)) + 1 } });
+  }
+  return current;
+}
+
+// One-shot repair of numbers shared by several tasks (left over from before
+// the check above; PROD had 130+). Per number the oldest task keeps it, the
+// others get max+1, max+2, … in creation order. Deterministic, so two devices
+// calling it at once write the same result.
+async function renumberDuplicateTasks(db) {
+  let rows;
+  try {
+    rows = (await db.listRows({ databaseId: DATABASE_ID, tableId: 'tasks', queries: [Query.select(['$id', '$createdAt', 'number']), Query.limit(5000)], total: false })).rows;
+  } catch {
+    rows = await listAll(db, 'tasks');
+  }
+  const order = (a, b) => String(a.$createdAt).localeCompare(String(b.$createdAt)) || a.$id.localeCompare(b.$id);
+  const byNumber = new Map();
+  let max = 0;
+  for (const r of rows) {
+    const n = Number(r.number) || 0;
+    if (n > max) max = n;
+    if (n > 0) byNumber.set(n, [...(byNumber.get(n) ?? []), r]);
+  }
+  const losers = [];
+  for (const list of byNumber.values()) if (list.length > 1) losers.push(...list.sort(order).slice(1));
+  const changes = losers.sort(order).map((r) => [r.$id, ++max]);
+  await forEachLimited(changes, REORDER_CONCURRENCY, ([rowId, number]) =>
+    db.updateRow({ databaseId: DATABASE_ID, tableId: 'tasks', rowId, data: { number } }));
+  return changes.length;
+}
+
+// Exported for scripts/tasknumber.test.ts (Appwrite only uses the default).
+export { freeTaskNumber, settleTaskNumber, renumberDuplicateTasks };
+
+async function existingRow(db, tableId, rowId) {
+  try { return await db.getRow({ databaseId: DATABASE_ID, tableId, rowId }); }
+  catch (e) { if (Number(e?.code) === 404) return null; throw e; }
+}
+
 function parseRequestPath(req) {
   const url = new URL(req.url || req.path || '/', 'https://function.local');
   return url.pathname.replace(/\/+$/, '') || '/';
@@ -267,9 +338,20 @@ export default async ({ req, res, error }) => {
       return response(res, rows.map(fromRow));
     }
 
+    if (req.method === 'POST' && isTasks && routeId === 'renumber-duplicates') {
+      return response(res, { renumbered: await renumberDuplicateTasks(db) });
+    }
+
     if (req.method === 'POST' && !routeId) {
+      const rowId = stableRowId(body.id);
       const data = toRow(body);
-      const row = await db.upsertRow({ databaseId: DATABASE_ID, tableId, rowId: stableRowId(body.id), data });
+      if (isTasks) {
+        // A replayed create (outbox retry) keeps the number already settled.
+        const before = await existingRow(db, tableId, rowId);
+        data.number = before ? before.number : await freeTaskNumber(db, rowId, body.number);
+      }
+      let row = await db.upsertRow({ databaseId: DATABASE_ID, tableId, rowId, data });
+      if (isTasks) row = await settleTaskNumber(db, row);
       return response(res, fromRow(row), 201);
     }
 
@@ -300,7 +382,12 @@ export default async ({ req, res, error }) => {
       try { current = await db.getRow({ databaseId: DATABASE_ID, tableId, rowId: stableRowId(routeId) }); }
       catch { return response(res, { error: 'Not found' }, 404); }
       const merged = { ...fromRow(current), ...body, id: routeId };
-      const row = await db.updateRow({ databaseId: DATABASE_ID, tableId, rowId: stableRowId(routeId), data: toRow(merged) });
+      const data = toRow(merged);
+      // Renumbering (the app repairs old duplicates) must not create a new one.
+      const renumber = isTasks && body.number !== undefined && Number(body.number) !== current.number;
+      if (renumber) data.number = await freeTaskNumber(db, current.$id, body.number);
+      let row = await db.updateRow({ databaseId: DATABASE_ID, tableId, rowId: stableRowId(routeId), data });
+      if (renumber) row = await settleTaskNumber(db, row);
       return response(res, fromRow(row));
     }
 

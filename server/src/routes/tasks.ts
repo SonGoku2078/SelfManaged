@@ -105,9 +105,41 @@ router.get('/', (_req, res) => {
   res.json(rows.map(r => rowToTask(r as Record<string, unknown>)));
 });
 
+// Clients pick #N from their own (possibly stale) view, so two devices can
+// send the same number. The server has the last word: a number used by
+// another task becomes max+1; the client adopts it from the reply.
+function freeNumber(id: string, requested: unknown): number {
+  const n = Number(requested);
+  if (Number.isInteger(n) && n > 0 && !db.prepare('SELECT 1 FROM tasks WHERE number = ? AND id <> ?').get([n, id])) return n;
+  const { max } = db.prepare('SELECT COALESCE(MAX(number), 0) AS max FROM tasks').get() as { max: number };
+  return max + 1;
+}
+
+// POST /api/tasks/renumber-duplicates — one-shot repair of numbers shared by
+// several tasks: the oldest keeps it, the rest get max+1, … (same as Appwrite).
+router.post('/renumber-duplicates', (_req, res) => {
+  const rows = db.prepare('SELECT id, number, created_at FROM tasks ORDER BY created_at ASC, id ASC').all() as { id: string; number: number }[];
+  const seen = new Set<number>();
+  let max = rows.reduce((m, r) => Math.max(m, Number(r.number) || 0), 0);
+  const upd = db.prepare('UPDATE tasks SET number = ? WHERE id = ?');
+  let renumbered = 0;
+  db.transaction(() => {
+    for (const r of rows) {
+      if (!(r.number > 0)) continue;
+      if (!seen.has(r.number)) { seen.add(r.number); continue; }
+      upd.run(++max, r.id);
+      renumbered++;
+    }
+  })();
+  res.json({ renumbered });
+});
+
 // POST /api/tasks
 router.post('/', (req, res) => {
   const row = taskToRow(req.body);
+  // A replayed create keeps the number it already got.
+  const before = db.prepare('SELECT number FROM tasks WHERE id = ?').get(row.id as string) as { number: number } | undefined;
+  row.number = before ? before.number : freeNumber(row.id as string, row.number);
   // Explicit column list (NOT positional VALUES) so a column added later via
   // ALTER TABLE — which SQLite appends at the end — can't shift the mapping.
   // INSERT OR REPLACE so a replayed offline-queue create is idempotent.
@@ -144,6 +176,9 @@ router.patch('/:id', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Not found' });
 
   const merged = taskToRow({ ...rowToTask(existing), ...req.body, id, updatedAt: new Date() });
+  if (req.body.number !== undefined && Number(req.body.number) !== existing.number) {
+    merged.number = freeNumber(id, req.body.number);
+  }
   db.prepare(`UPDATE tasks SET
     number=@number, title=@title, description=@description, project_id=@project_id,
     parent_id=@parent_id, section_id=@section_id, due_date=@due_date,

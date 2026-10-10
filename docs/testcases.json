@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-14",
+  "updated": "2026-10-10",
   "hinweis": "Zentrale Testfalldatenbank. Auto-Fälle werden von scripts/run-tests.mjs aktualisiert; manuelle Läufe trägt der Test-Manager ein. Anzeige: Web-App → 🧪 Testreport.",
   "cases": [
     {
@@ -53,6 +53,11 @@
         },
         {
           "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         }
@@ -111,6 +116,11 @@
           "datum": "2026-09-14",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -167,6 +177,11 @@
           "datum": "2026-09-14",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -206,6 +221,11 @@
         },
         {
           "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         }
@@ -249,6 +269,11 @@
           "datum": "2026-09-14",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -285,6 +310,11 @@
           "datum": "2026-09-14",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -299,6 +329,11 @@
       "laeufe": [
         {
           "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         }
@@ -373,6 +408,11 @@
           "datum": "2026-07-09",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -422,6 +462,11 @@
         },
         {
           "datum": "2026-07-09",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         }
@@ -1500,6 +1545,11 @@
           "datum": "2026-09-14",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -1530,6 +1580,27 @@
       "laeufe": [
         {
           "datum": "2026-09-24",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        }
+      ]
+    },
+    {
+      "id": "TC-A13",
+      "bereich": "Auto-Tests",
+      "titel": "Task-Nummern eindeutig: Server vergibt #N verbindlich, alte Doppelte werden repariert (#1775 doppelt)",
+      "erwartung": "Appwrite-Funktion: belegte Nummer → max+1, freie/eigene Nummer bleibt; bei gleichzeitigem Anlegen behält der ältere Task die Nummer, der neuere bekommt max+1; renumber-duplicates nummeriert alle Doppelten (ältester behält) in Erstellreihenfolge um und ist idempotent. Client: duplicateNumberTasks findet die zu verschiebenden Tasks.",
+      "typ": "auto",
+      "quelle": "scripts/tasknumber.test.ts",
+      "regression": true,
+      "laeufe": [
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         }

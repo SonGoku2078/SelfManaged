@@ -237,7 +237,8 @@ export function planNewTask(
 
 // ── Tasks: Anlegen & Ändern ─────────────────────────────────────────────────
 
-// Der Server vergibt keine Nummer — Konvention des Stores: fortlaufend.
+// Vorschlag max+1 (wie der Store). Ist die Nummer inzwischen belegt, vergibt
+// der Server eine freie — massgeblich ist die Nummer in seiner Antwort.
 export const nextTaskNumber = (tasks: ApiTask[]): number =>
   tasks.reduce((m, t) => Math.max(m, Number(t.number) || 0), 0) + 1;
 

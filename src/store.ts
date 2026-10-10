@@ -32,10 +32,11 @@ import {
   tasksApi, projectsApi, categoriesApi, membersApi,
   sectionsApi, blockersApi, savedViewsApi, activityLogApi, settingsApi,
 } from './api';
-import { enqueue, flush as flushOutbox, pendingCount, writeSeq } from './api/outbox';
+import { enqueue, flush as flushOutbox, pendingCount, writeSeq, onTaskRenumbered } from './api/outbox';
 import { saveSnapshot, loadSnapshot } from './api/cache';
 import { buildOccurrence, nextDueAfterCompletion } from './recurrence';
-import { safeNextNumber } from './taskNumber';
+import { safeNextNumber, duplicateNumberTasks } from './taskNumber';
+import { IS_EXTRA_WINDOW } from './windows';
 import { orderSections } from './selectors';
 import { nextPomodoroPhase, pomodoroDayKey } from './pomodoro';
 
@@ -639,6 +640,8 @@ export const DEFAULT_NAV_ORDER: ViewType[] = [
 // it is still in flight. A second run would fetch server state from BEFORE the
 // outbox flush and clobber newer optimistic edits.
 let loadAllInFlight: Promise<void> | null = null;
+// Duplicate task numbers are repaired at most once per session (see loadAll).
+let renumberRequested = false;
 
 // #53: two-phase completion timing — grey hold in place, then slide/collapse.
 export const COMPLETION_HOLD_MS = 500;
@@ -904,6 +907,14 @@ export const useStore = create<AppState>()((set, get) => ({
       set({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextNumber, dataLoaded: true });
       // Refresh the offline display cache with server truth.
       saveSnapshot({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextNumber });
+      // Old duplicate numbers (two tasks #1775): the server repairs them all in
+      // one call, then we pull again. Once per session — never a retry loop.
+      if (!IS_EXTRA_WINDOW && !renumberRequested && duplicateNumberTasks(tasks).length) {
+        renumberRequested = true;
+        void tasksApi.renumberDuplicates()
+          .then((r) => { if (r?.renumbered) void get().loadAll(); })
+          .catch((err) => console.warn('Renumbering duplicate task numbers failed', err));
+      }
     } catch (e) {
       // Backend unreachable. Do NOT load or overwrite anything — keep whatever
       // is already in memory and let the offline banner inform the user. The
@@ -2312,6 +2323,14 @@ export const useStore = create<AppState>()((set, get) => ({
         enqueue('settings.patch', { patch: s });
       },
 }));
+
+// The server gave a new task another #N (the picked one was taken) → adopt it.
+onTaskRenumbered((id, number) => {
+  useStore.setState((state) => ({
+    tasks: state.tasks.map((t) => (t.id === id ? { ...t, number } : t)),
+    nextTaskNumber: Math.max(state.nextTaskNumber, number + 1),
+  }));
+});
 
 // Keep the offline display cache in sync with optimistic in-memory changes so a
 // relaunch (or offline launch) shows the latest local state. Debounced; display-only.

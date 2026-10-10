@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { applyCompletionHold } from '../selectors';
+import { groupProjects } from '../projectGroups';
 import type { Project } from '../types';
 import TaskRow from './TaskRow';
 
@@ -50,13 +51,8 @@ export default function Projects({
 
   // ── Project list ──
   // Match the desktop "Projekte" panel: active projects + areas only (hide
-  // inactive/"Irgendwann" and archived). Show projects first, then areas;
-  // pinned float to the top within each group, then alphabetical.
-  const sortGroup = (list: Project[]) =>
-    [...list].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || a.name.localeCompare(b.name));
-  const shown = projects.filter((p) => !p.archived && (p.kind === 'area' || p.active === true));
-  const projs = sortGroup(shown.filter((p) => p.kind !== 'area'));
-  const areas = sortGroup(shown.filter((p) => p.kind === 'area'));
+  // inactive/"Irgendwann" and archived), in the desktop's manual order.
+  const { projects: projs, areas } = groupProjects(projects);
 
   if (projs.length === 0 && areas.length === 0) {
     return <p className="m-empty">Keine Projekte (oder noch nicht geladen — siehe ⚙️).</p>;
@@ -76,7 +72,7 @@ export default function Projects({
       {projs.map(row)}
       {areas.length > 0 && (
         <>
-          <h2 className="m-group-head m-proj-subhead">Bereiche</h2>
+          <h2 className="m-group-head m-proj-subhead">📦 Areas</h2>
           {areas.map(row)}
         </>
       )}
