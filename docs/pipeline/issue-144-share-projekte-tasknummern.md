@@ -12,6 +12,7 @@
 > - 2026-10-10 Nutzer-Feedback direkt umgesetzt (Abkürzung: Req/Architektur/Dev in einem Durchgang, dokumentiert unten), danach Gate → /cicd-engineer
 > - 2026-10-10 gate-go → Commit, PR, Merge, Tags appwrite-v16 + mobile-v0.5.25
 > - 2026-10-10 deployt, Altlasten repariert → done
+> - 2026-10-10 Nachtrag (Nutzer-Feedback): Task-Detail auf dem Handy mit derselben Projektauswahl (zugeklappt), Speichern und Löschen (mit Rückfrage) im fixierten Kopf; geprüft per Screenshot bei 360 px → mobile-v0.5.26
 
 ## 1. Requirements
 
