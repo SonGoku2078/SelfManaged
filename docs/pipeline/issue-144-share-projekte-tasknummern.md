@@ -60,7 +60,7 @@ Siehe Issue #144. AC1–AC3: Share-Sheet (Android). AC4–AC6: Task-Nummern.
 ## 6. CI/CD & Deployment
 
 - **PR #145** (Squash) gemergt, CI grün.
-- **:** Appwrite Deploy erfolgreich (Funktion und Site), vom Nutzer freigegeben.
-- **:** APK als Release .
+- **`appwrite-v16`:** Appwrite Deploy erfolgreich (Funktion und Site), vom Nutzer freigegeben.
+- **`mobile-v0.5.25`:** APK als Release `SelfManaged-0.5.25.apk`.
 - **Reparatur in PROD:** Vorher 1806 Tasks, 145 doppelte Nummern, 229 betroffene Tasks. Der erste Aufruf hat nach rund 120 Updates das Appwrite-Rate-Limit erreicht (429), der zweite Aufruf eine Minute später hat die restlichen 109 repariert. Danach gab es 0 Duplikate. Beispiel #1775: „Schar NotebookLM zeigen“ behält #1775, „Projekt auswahl schlecht“ hat jetzt #2125.
 - **Nicht ausgeliefert:** eine Desktop-Version. Die Desktop-App holt sich die Server-Nummern beim nächsten Laden.
