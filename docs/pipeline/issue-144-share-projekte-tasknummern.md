@@ -2,8 +2,8 @@
 
 | Feld | Wert |
 |---|---|
-| Status | gate-go |
-| Nächste Rolle | /cicd-engineer |
+| Status | done |
+| Nächste Rolle | — |
 | Owner-Rolle | orchestrator |
 | Datum | 2026-10-10 |
 | Issue | #144 (aus SelfManaged-Task #1775 „Projekt auswahl schlecht") |
@@ -11,6 +11,7 @@
 > Orchestrator-Log:
 > - 2026-10-10 Nutzer-Feedback direkt umgesetzt (Abkürzung: Req/Architektur/Dev in einem Durchgang, dokumentiert unten), danach Gate → /cicd-engineer
 > - 2026-10-10 gate-go → Commit, PR, Merge, Tags appwrite-v16 + mobile-v0.5.25
+> - 2026-10-10 deployt, Altlasten repariert → done
 
 ## 1. Requirements
 
@@ -58,4 +59,8 @@ Siehe Issue #144. AC1–AC3: Share-Sheet (Android). AC4–AC6: Task-Nummern.
 
 ## 6. CI/CD & Deployment
 
-_(wird vom CI/CD-Schritt ergänzt)_
+- **PR #145** (Squash) gemergt, CI grün.
+- **:** Appwrite Deploy erfolgreich (Funktion und Site), vom Nutzer freigegeben.
+- **:** APK als Release .
+- **Reparatur in PROD:** Vorher 1806 Tasks, 145 doppelte Nummern, 229 betroffene Tasks. Der erste Aufruf hat nach rund 120 Updates das Appwrite-Rate-Limit erreicht (429), der zweite Aufruf eine Minute später hat die restlichen 109 repariert. Danach gab es 0 Duplikate. Beispiel #1775: „Schar NotebookLM zeigen“ behält #1775, „Projekt auswahl schlecht“ hat jetzt #2125.
+- **Nicht ausgeliefert:** eine Desktop-Version. Die Desktop-App holt sich die Server-Nummern beim nächsten Laden.
