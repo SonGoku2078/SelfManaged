@@ -12,11 +12,6 @@
       "regression": true,
       "laeufe": [
         {
-          "datum": "2026-07-05",
-          "ergebnis": "pass",
-          "bemerkung": ""
-        },
-        {
           "datum": "2026-07-06",
           "ergebnis": "pass",
           "bemerkung": ""
@@ -53,6 +48,11 @@
         },
         {
           "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         },
@@ -73,11 +73,6 @@
       "regression": true,
       "laeufe": [
         {
-          "datum": "2026-07-05",
-          "ergebnis": "pass",
-          "bemerkung": ""
-        },
-        {
           "datum": "2026-07-06",
           "ergebnis": "pass",
           "bemerkung": ""
@@ -121,6 +116,11 @@
           "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -133,11 +133,6 @@
       "quelle": "scripts/ics.test.ts",
       "regression": true,
       "laeufe": [
-        {
-          "datum": "2026-07-05",
-          "ergebnis": "pass",
-          "bemerkung": ""
-        },
         {
           "datum": "2026-07-06",
           "ergebnis": "pass",
@@ -175,6 +170,11 @@
         },
         {
           "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         },
@@ -228,6 +228,11 @@
           "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -267,6 +272,11 @@
         },
         {
           "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         },
@@ -315,6 +325,11 @@
           "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -329,6 +344,11 @@
       "laeufe": [
         {
           "datum": "2026-09-14",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
         },
@@ -1550,6 +1570,11 @@
           "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -1587,6 +1612,11 @@
           "datum": "2026-10-10",
           "ergebnis": "pass",
           "bemerkung": ""
+        },
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
         }
       ]
     },
@@ -1599,6 +1629,11 @@
       "quelle": "scripts/tasknumber.test.ts",
       "regression": true,
       "laeufe": [
+        {
+          "datum": "2026-10-10",
+          "ergebnis": "pass",
+          "bemerkung": ""
+        },
         {
           "datum": "2026-10-10",
           "ergebnis": "pass",

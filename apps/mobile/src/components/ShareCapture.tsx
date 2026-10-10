@@ -5,8 +5,8 @@ import { useSwipeDown } from '../gestures';
 import { deriveShareFields } from '../shareFields';
 import { dateKey } from '../selectors';
 import type { SharedPayload } from '../shareTarget';
-import { groupProjects } from '../projectGroups';
-import type { Project, Task } from '../types';
+import type { Task } from '../types';
+import ProjectPicker from './ProjectPicker';
 
 // Quick-capture sheet shown when content is shared into the app. The link goes
 // into the note; the project defaults to Inbox and can be searched/picked.
@@ -31,35 +31,11 @@ export default function ShareCapture({
   const [title, setTitle] = useState(initial.title);
   const [description, setDescription] = useState(initial.description);
   const [projectChoice, setProjectChoice] = useState<string>(''); // '' = Inbox / follow #tag
-  const [projQuery, setProjQuery] = useState('');
   const [today, setToday] = useState(false);
   const [thisWeek, setThisWeek] = useState(false);
   const [starred, setStarred] = useState(false);
   const swipe = useSwipeDown(onClose);
 
-  // Same groups/order/colors as the desktop "Projekte" panel. Someday projects
-  // stay hidden like there, but a search still finds them.
-  const searching = projQuery.trim() !== '';
-  const groups = groupProjects(projects, projQuery);
-  const someday = searching ? groups.someday : [];
-  const noMatch = groups.projects.length + groups.areas.length + someday.length === 0;
-  const chosen = projectChoice ? projects.find((p) => p.id === projectChoice) : undefined;
-
-  const pick = (id: string) => {
-    setProjectChoice(id);
-    setProjQuery('');
-    (document.activeElement as HTMLElement | null)?.blur?.(); // drop the keyboard
-  };
-  const projItem = (p: Project) => (
-    <button
-      key={p.id}
-      className={`m-share-projitem ${projectChoice === p.id ? 'on' : ''}`}
-      onClick={() => pick(p.id)}
-    >
-      <span className="m-dot" style={{ background: p.color ?? '#9ca3af' }} />
-      <span className="m-share-projname">{p.kind === 'area' ? '∞ ' : ''}{p.name}</span>
-    </button>
-  );
   const canSave = !!title.trim() || !!description.trim();
 
   const save = () => {
@@ -140,41 +116,7 @@ export default function ShareCapture({
           </button>
         </div>
 
-        <div className="m-field">
-          <span className="m-share-chosen">
-            Projekt:{' '}
-            {chosen && <span className="m-dot" style={{ background: chosen.color ?? '#9ca3af' }} />}
-            <strong>{chosen ? `${chosen.kind === 'area' ? '∞ ' : ''}${chosen.name}` : 'Inbox'}</strong>
-          </span>
-          <input
-            className="m-share-projsearch"
-            placeholder="Projekt suchen… (leer = Inbox)"
-            value={projQuery}
-            onChange={(e) => setProjQuery(e.target.value)}
-          />
-          <div className="m-share-projlist">
-            <button
-              className={`m-share-projitem ${projectChoice === '' ? 'on' : ''}`}
-              onClick={() => pick('')}
-            >
-              📥 Inbox (kein Projekt)
-            </button>
-            {groups.projects.map(projItem)}
-            {groups.areas.length > 0 && (
-              <>
-                <div className="m-share-projgroup">📦 Areas</div>
-                {groups.areas.map(projItem)}
-              </>
-            )}
-            {someday.length > 0 && (
-              <>
-                <div className="m-share-projgroup">🌥️ Someday</div>
-                {someday.map(projItem)}
-              </>
-            )}
-            {noMatch && <p className="m-settings-hint">Kein Projekt gefunden.</p>}
-          </div>
-        </div>
+        <ProjectPicker value={projectChoice || null} onChange={(id) => setProjectChoice(id ?? '')} />
 
         <label className="m-field">
           <span>Beschreibung</span>

@@ -5,6 +5,7 @@ import { dateKey, isTodayFlagActive, countsAsToday, isImplicitToday } from '../s
 import { useSwipeDown } from '../gestures';
 import { isEvernoteUrl, DEFAULT_EVERNOTE_TITLE } from '../evernote';
 import type { Priority, RecurrenceType, RecurUnit, RecurMonthDay, TaskLink, Task } from '../types';
+import ProjectPicker from './ProjectPicker';
 
 const toInput = (d: Date | null | undefined) =>
   d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
@@ -61,7 +62,13 @@ export default function TaskDetailModal({
     setDurationInput(val ? formatDuration(val) : '');
   };
   const close = () => { commitText(); onClose(); };
-  const remove = () => { deleteTask(t.id); onClose(); };
+  // Delete sits in the head now, right next to Save — ask before a mis-tap
+  // throws the task away.
+  const remove = () => {
+    if (!window.confirm(`#${t.number} „${t.title}" löschen?`)) return;
+    deleteTask(t.id);
+    onClose();
+  };
 
   const assigneeIds = t.assigneeIds ?? (t.assigneeId ? [t.assigneeId] : []);
   const subtasks = tasks.filter((s) => s.parentId === t.id);
@@ -70,7 +77,9 @@ export default function TaskDetailModal({
   return (
     <div className="m-modal-backdrop" onClick={close}>
       <div className="m-modal" onClick={(e) => e.stopPropagation()} style={swipe.style} {...swipe.handlers}>
-        <div className="m-modal-head">
+        {/* Sticky head with Save + Delete — reachable while the keyboard
+            covers the bottom of the sheet (same as the share sheet). */}
+        <div className="m-modal-head m-share-head">
           <span className="m-modal-num">#{t.number}</span>
           <div className="m-modal-head-actions">
             <button
@@ -82,7 +91,8 @@ export default function TaskDetailModal({
             <button className={`m-star ${t.starred ? 'on' : ''}`} onClick={() => toggleStar(t.id)}>
               {t.starred ? '★' : '☆'}
             </button>
-            <button className="m-modal-x" onClick={close}>✕</button>
+            <button className="m-head-del" onClick={remove} aria-label="Löschen" title="Löschen">🗑</button>
+            <button className="m-share-save" onClick={close}>Speichern</button>
           </div>
         </div>
 
@@ -212,15 +222,11 @@ export default function TaskDetailModal({
           </div>
         )}
 
-        <label className="m-field">
-          <span>Projekt</span>
-          <select value={t.projectId ?? ''} onChange={(e) => updateTask(t.id, { projectId: e.target.value || null })}>
-            <option value="">— Inbox (kein Projekt) —</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </label>
+        <ProjectPicker
+          collapsible
+          value={t.projectId ?? null}
+          onChange={(projectId) => updateTask(t.id, { projectId })}
+        />
 
         {categories.length > 0 && (
           <div className="m-field">
@@ -292,11 +298,6 @@ export default function TaskDetailModal({
           <input type="checkbox" checked={t.completed} onChange={() => toggleTask(t.id)} />
           <span>Erledigt</span>
         </label>
-
-        <div className="m-modal-foot">
-          <button className="m-btn-del" onClick={remove}>🗑 Löschen</button>
-          <button className="m-btn-save" onClick={close}>Speichern</button>
-        </div>
       </div>
     </div>
   );

@@ -570,6 +570,28 @@ body {
   font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
 }
 .m-share-save:disabled { opacity: 0.45; cursor: default; }
+/* Task detail head: #N · ✓ Erledigen · ★ · 🗑 · Speichern — must fit ~360px. */
+.m-share-head .m-modal-head-actions { gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.m-share-head .m-complete { padding: 0 10px; font-size: 13px; }
+.m-share-head .m-star { width: 34px; }
+.m-share-head .m-modal-head-actions .m-share-save { padding: 0 14px; margin-left: 4px; }
+.m-head-del {
+  width: 34px; height: 40px; flex-shrink: 0;
+  border: none; border-radius: 50%; background: none;
+  font-size: 18px; cursor: pointer;
+}
+.m-head-del:active { background: var(--press-bg); }
+/* Collapsed project picker (task detail): current project, tap to change. */
+.m-proj-current {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  min-height: 44px; padding: 10px 12px; text-align: left;
+  border: 1px solid var(--border-light); border-radius: 10px;
+  background: var(--card-bg); color: var(--text-primary);
+  font-family: inherit; font-size: 16px; cursor: pointer;
+}
+.m-proj-current .m-dot { width: 10px; height: 10px; flex-shrink: 0; }
+.m-proj-current .m-share-projname { flex: 1; font-weight: 600; }
+.m-proj-current-caret { color: var(--text-secondary); }
 /* Share sheet: ☀️ Heute / 🗓️ Next Week / ★ Next Action toggles. */
 .m-share-flags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .m-share-flag {
