@@ -187,11 +187,32 @@ function httpStatus(e: unknown): number | null {
   return null;
 }
 
+// The server owns task numbers: if the #N a client picked was already taken
+// (another device created a task meanwhile), the reply carries a new one.
+// The store subscribes and adopts it.
+let renumberListeners: Array<(id: string, number: number) => void> = [];
+export function onTaskRenumbered(fn: (id: string, number: number) => void): () => void {
+  renumberListeners.push(fn);
+  return () => { renumberListeners = renumberListeners.filter((l) => l !== fn); };
+}
+function adoptNumber(id: string, sent: unknown, saved: unknown): void {
+  const n = (saved as { number?: unknown } | null)?.number;
+  if (typeof n === 'number' && n > 0 && n !== sent) for (const l of renumberListeners) l(id, n);
+}
+
 // kind → API call. Payloads are plain objects pulled back out of localStorage.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const handlers: Record<string, (p: any) => Promise<unknown>> = {
-  'task.create':      (p) => tasksApi.create(p.task),
-  'task.update':      (p) => tasksApi.update(p.id, p.patch),
+  'task.create':      async (p) => {
+    const saved = await tasksApi.create(p.task);
+    adoptNumber(p.task.id, p.task.number, saved);
+    return saved;
+  },
+  'task.update':      async (p) => {
+    const saved = await tasksApi.update(p.id, p.patch);
+    if (p.patch?.number !== undefined) adoptNumber(p.id, p.patch.number, saved);
+    return saved;
+  },
   'task.remove':      (p) => tasksApi.remove(p.id),
   'task.reorder':     (p) => tasksApi.reorder(p.ids),
   'project.create':   (p) => projectsApi.create(p.project),
