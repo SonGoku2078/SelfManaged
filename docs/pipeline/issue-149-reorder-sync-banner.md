@@ -2,8 +2,8 @@
 
 | Feld | Wert |
 |---|---|
-| Status | in-deploy |
-| Nächste Rolle | cicd-engineer (Deploy `appwrite-v17`, danach Migration) |
+| Status | done |
+| Nächste Rolle | — (User: Desktop-App neu starten, TF-7 beobachten) |
 | Owner-Rolle | cicd-engineer |
 | Datum | 2026-10-19 |
 
@@ -56,4 +56,7 @@ Branch `fix/sync-reorder-single-write`. Dateien: `src/taskOrder.ts` (neu), `src/
 
 ## 6. CI/CD & Deployment
 
-- offen
+- **PR #150** (Squash) gemergt, CI grün.
+- **`appwrite-v17`:** Appwrite Deploy erfolgreich (Function und Site), vom Nutzer freigegeben.
+- **Migration PROD:** 1.215 von 1.216 Top-Level-Tasks auf `index * 1024` gesetzt, Reihenfolge unverändert. Kontrolllauf danach: 0 Zeilen zu schreiben.
+- **Nicht ausgeliefert:** Desktop-EXE (Thin Client lädt die Site) und Mobile (sendet keine Reorders).
