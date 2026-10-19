@@ -32,13 +32,27 @@ import {
   tasksApi, projectsApi, categoriesApi, membersApi,
   sectionsApi, blockersApi, savedViewsApi, activityLogApi, settingsApi,
 } from './api';
-import { enqueue, flush as flushOutbox, pendingCount, writeSeq, onTaskRenumbered } from './api/outbox';
+import { enqueue, flush as flushOutbox, pendingCount, writeSeq, onTaskRenumbered, hasPending } from './api/outbox';
+import { ORDER_STEP, edgeOrder, placeMoved, type Placement } from './taskOrder';
 import { saveSnapshot, loadSnapshot } from './api/cache';
 import { buildOccurrence, nextDueAfterCompletion } from './recurrence';
 import { safeNextNumber, duplicateNumberTasks } from './taskNumber';
 import { IS_EXTRA_WINDOW } from './windows';
 import { orderSections } from './selectors';
 import { nextPomodoroPhase, pomodoroDayKey } from './pomodoro';
+
+// Persists a drag (#149): normally ONE task.update with the new sortOrder
+// (plus a few neighbours when the gap was used up); only an inconsistent
+// local order falls back to a full reorder of that level, spaced out again.
+// `extra` (e.g. the new sectionId) rides along with the moved task.
+function persistPlacement(id: string, p: Placement<Task>, extra: Partial<Task> = {}): void {
+  const hasExtra = Object.keys(extra).length > 0;
+  if (hasExtra && !p.updates.some(([u]) => u === id)) enqueue('task.update', { id, patch: extra });
+  for (const [u, sortOrder] of p.updates) {
+    enqueue('task.update', { id: u, patch: u === id ? { ...extra, sortOrder } : { sortOrder } });
+  }
+  if (p.reorderIds) enqueue('task.reorder', { ids: p.reorderIds, step: ORDER_STEP });
+}
 
 const uid = (prefix: string) =>
   `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
@@ -957,7 +971,9 @@ export const useStore = create<AppState>()((set, get) => ({
           recurrence: input.recurrence ?? 'none',
           recurrenceEnd: null,
           linkedProjectId: input.linkedProjectId ?? null,
-          sortOrder: input.sortOrder ?? 0,
+          // Where it is inserted below (top/bottom) — 0 sat it among the oldest
+          // tasks on the server and forced a full renumber on the next drag (#149).
+          sortOrder: input.sortOrder ?? (input.parentId ? 0 : edgeOrder(get().tasks, !!get().settings.addToTop)),
         };
         set((state) => ({
           // Honour the quick-add direction toggle: prepend or append.
@@ -1056,7 +1072,8 @@ export const useStore = create<AppState>()((set, get) => ({
             orderById.has(t.id) ? { ...t, sortOrder: orderById.get(t.id)!, updatedAt: now } : t
           ),
         }));
-        enqueue('task.reorder', { ids: without.map((t) => t.id) });
+        // step 1: siblings only — marks it as a current (not pre-#149) reorder.
+        enqueue('task.reorder', { ids: without.map((t) => t.id), step: 1 });
       },
 
       // Convert a task into a subtask of `parentId`, or promote it back to a
@@ -1553,6 +1570,7 @@ export const useStore = create<AppState>()((set, get) => ({
       // Move dragged task to the position of target (drop-before). Forces manual sort
       // so the new order is actually shown.
       reorderTasks: (draggedId, targetId) => {
+        let placement: Placement<Task> | undefined;
         set((state) => {
           if (draggedId === targetId) return {};
           const list = [...state.tasks];
@@ -1562,13 +1580,13 @@ export const useStore = create<AppState>()((set, get) => ({
           const [moved] = list.splice(from, 1);
           const insertAt = list.findIndex((t) => t.id === targetId);
           list.splice(insertAt, 0, moved);
+          placement = placeMoved(list, draggedId, hasPending('task.reorder'));
           return {
-            tasks: list,
+            tasks: placement.tasks,
             ui: { ...state.ui, sortField: 'manual' as SortField },
           };
         });
-        const ids = get().tasks.map(t => t.id);
-        enqueue('task.reorder', { ids });
+        if (placement) persistPlacement(draggedId, placement);
       },
 
       addSection: (scope, name) => {
@@ -1627,6 +1645,7 @@ export const useStore = create<AppState>()((set, get) => ({
       dropTaskOnTask: (draggedId, targetId) => {
         if (draggedId === targetId) return;
         let sectionId: string | null | undefined;
+        let placement: Placement<Task> | undefined;
         set((state) => {
           const list = [...state.tasks];
           const from = list.findIndex((t) => t.id === draggedId);
@@ -1637,18 +1656,16 @@ export const useStore = create<AppState>()((set, get) => ({
           sectionId = moved.sectionId;
           const insertAt = list.findIndex((t) => t.id === targetId);
           list.splice(insertAt, 0, moved);
-          return { tasks: list, ui: { ...state.ui, sortField: 'manual' as SortField } };
+          placement = placeMoved(list, draggedId, hasPending('task.reorder'));
+          return { tasks: placement.tasks, ui: { ...state.ui, sortField: 'manual' as SortField } };
         });
         // Persist section membership + new order — previously local-only, so the
         // task fell out of its section on reload (#21).
-        if (sectionId !== undefined) {
-          enqueue('task.update', { id: draggedId, patch: { sectionId } });
-          enqueue('task.reorder', { ids: get().tasks.map((t) => t.id) });
-        }
+        if (sectionId !== undefined && placement) persistPlacement(draggedId, placement, { sectionId });
       },
 
       assignTaskSection: (taskId, sectionId) => {
-        let ok = false;
+        let placement: Placement<Task> | undefined;
         set((state) => {
           const list = [...state.tasks];
           const from = list.findIndex((t) => t.id === taskId);
@@ -1664,15 +1681,12 @@ export const useStore = create<AppState>()((set, get) => ({
             }
           }
           list.splice(insertAt, 0, moved);
-          ok = true;
-          return { tasks: list, ui: { ...state.ui, sortField: 'manual' as SortField } };
+          placement = placeMoved(list, taskId, hasPending('task.reorder'));
+          return { tasks: placement.tasks, ui: { ...state.ui, sortField: 'manual' as SortField } };
         });
         // Persist section membership + new order — previously local-only, so the
         // task fell out of its section on reload (#21).
-        if (ok) {
-          enqueue('task.update', { id: taskId, patch: { sectionId } });
-          enqueue('task.reorder', { ids: get().tasks.map((t) => t.id) });
-        }
+        if (placement) persistPlacement(taskId, placement, { sectionId });
       },
 
       reorderProjects: (draggedId, targetId) => {
