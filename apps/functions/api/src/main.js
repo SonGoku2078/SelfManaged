@@ -130,7 +130,12 @@ async function listAll(db, tableId, order = [], orderDesc = []) {
 }
 
 const REORDER_MAX = 10000;
-const REORDER_CONCURRENCY = 8;
+const REORDER_CONCURRENCY = 16;
+// The function is killed after 30 s. A big renumber (700+ rows) used to run
+// into that limit on every retry and sat in the outbox for minutes (#149):
+// stop starting new writes after this budget and report the rest instead.
+const REORDER_BUDGET_MS = 20_000;
+const REORDER_STEP_MAX = 1_000_000;
 
 // rowId → sortOrder for a whole table. Selects only the needed column (task
 // rows carry descriptions/attachments); falls back to full rows if select
@@ -145,10 +150,13 @@ async function currentSortOrders(db, tableId) {
   return new Map(rows.map((r) => [r.$id, r.sortOrder]));
 }
 
-async function forEachLimited(items, limit, fn) {
+// Returns how many items were processed; with a deadline, workers stop
+// picking up new items once it has passed.
+async function forEachLimited(items, limit, fn, deadline = Infinity) {
   let next = 0;
-  const worker = async () => { while (next < items.length) await fn(items[next++]); };
+  const worker = async () => { while (next < items.length && Date.now() < deadline) await fn(items[next++]); };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return next;
 }
 
 // Deletes every row matching `matchQuery` in batches that fit the Appwrite
@@ -237,8 +245,8 @@ async function renumberDuplicateTasks(db) {
   return changes.length;
 }
 
-// Exported for scripts/tasknumber.test.ts (Appwrite only uses the default).
-export { freeTaskNumber, settleTaskNumber, renumberDuplicateTasks };
+// Exported for scripts/tasknumber.test.ts + taskorder.test.ts (Appwrite only uses the default).
+export { freeTaskNumber, settleTaskNumber, renumberDuplicateTasks, forEachLimited };
 
 async function existingRow(db, tableId, rowId) {
   try { return await db.getRow({ databaseId: DATABASE_ID, tableId, rowId }); }
@@ -359,6 +367,9 @@ export default async ({ req, res, error }) => {
       const ids = Array.isArray(body.ids) ? body.ids.filter((id) => typeof id === 'string') : [];
       // offset = absolute sortOrder of ids[0] (kept for chunked clients).
       const offset = Number.isInteger(body.offset) && body.offset >= 0 ? body.offset : 0;
+      // step = gap between neighbours: the client spaces positions out so a
+      // later drag only has to write the one moved row (#149). Default 1.
+      const step = Number.isInteger(body.step) && body.step >= 1 && body.step <= REORDER_STEP_MAX ? body.step : 1;
       if (ids.length > REORDER_MAX) return response(res, { error: `Maximum ${REORDER_MAX} reorder ids` }, 400);
       // The client always sends the COMPLETE order (1600+ tasks), but a drag
       // changes only a few positions. Write just the rows whose sortOrder
@@ -370,11 +381,14 @@ export default async ({ req, res, error }) => {
       const changes = [];
       ids.forEach((id, index) => {
         const rowId = stableRowId(id);
-        if (current.has(rowId) && current.get(rowId) !== offset + index) changes.push([rowId, offset + index]);
+        const sortOrder = (offset + index) * step;
+        if (current.has(rowId) && current.get(rowId) !== sortOrder) changes.push([rowId, sortOrder]);
       });
-      await forEachLimited(changes, REORDER_CONCURRENCY, ([rowId, sortOrder]) =>
-        db.updateRow({ databaseId: DATABASE_ID, tableId, rowId, data: { sortOrder } }));
-      return response(res, { updated: changes.length });
+      const done = await forEachLimited(changes, REORDER_CONCURRENCY, ([rowId, sortOrder]) =>
+        db.updateRow({ databaseId: DATABASE_ID, tableId, rowId, data: { sortOrder } }), Date.now() + REORDER_BUDGET_MS);
+      // remaining > 0: the client re-sends the same order right away; the
+      // rows already written no longer differ, so it continues where it stopped.
+      return response(res, { updated: done, remaining: changes.length - done });
     }
 
     if (req.method === 'PATCH' && routeId) {

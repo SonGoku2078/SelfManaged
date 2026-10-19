@@ -142,10 +142,18 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 // per-user execution rate limit, which stalled the whole outbox. `offset`
 // stays in the protocol so a cap can be reintroduced without a server change.
 const REORDER_CHUNK = 5000;
-export async function reorderChunked(path: string, ids: string[]): Promise<void> {
+// The server stops after a time budget and reports `remaining` instead of
+// running into the function timeout (#149). Re-sending the same order
+// continues where it stopped (rows already written no longer differ).
+const REORDER_MAX_ROUNDS = 20;
+export async function reorderChunked(path: string, ids: string[], step = 1): Promise<void> {
   for (let offset = 0; offset < ids.length; offset += REORDER_CHUNK) {
     const chunk = ids.slice(offset, offset + REORDER_CHUNK);
-    await apiFetch<void>(path, { method: 'PATCH', body: JSON.stringify({ ids: chunk, offset }) });
+    const body = JSON.stringify(step > 1 ? { ids: chunk, offset, step } : { ids: chunk, offset });
+    for (let round = 0; round < REORDER_MAX_ROUNDS; round++) {
+      const res = await apiFetch<{ remaining?: number } | undefined>(path, { method: 'PATCH', body });
+      if (!res || !(Number(res.remaining) > 0)) break;
+    }
   }
 }
 

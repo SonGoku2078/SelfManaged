@@ -30,7 +30,7 @@ import ConfirmDialog from './components/ConfirmDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import CompletionCalendar from './components/CompletionCalendar';
 import { parseTaskHash, parseAddTaskHash } from './config';
-import { onChange as outboxOnChange } from './api/outbox';
+import { onChange as outboxOnChange, visiblePendingCount } from './api/outbox';
 import { useServerSync } from './useServerSync';
 import { WINDOW_TARGET, IS_EXTRA_WINDOW } from './windows';
 
@@ -99,7 +99,8 @@ function App() {
   const dataLoaded = useStore((s) => s.dataLoaded);
   const { serverOnline, refreshState, refresh } = useServerSync();
   const [pendingWrites, setPendingWrites] = useState(0);
-  useEffect(() => outboxOnChange(setPendingWrites), []);
+  // Reorders don't count: a pending sort order loses nothing (#149).
+  useEffect(() => outboxOnChange(() => setPendingWrites(visiblePendingCount())), []);
   // Runtime-DEV-Erkennung wie beim Testreport-Menü (#31): der Dev-Server :3002
   // liefert dasselbe production-Bundle aus wie Prod (:3001) — das Env-Banner
   // muss deshalb am gemeldeten Server-Port hängen, nicht nur an VITE_APP_ENV.
@@ -112,13 +113,13 @@ function App() {
       .catch(() => {});
     return () => { on = false; };
   }, []);
-  // Only show the sync banner once writes have been pending for a moment. Quick
-  // saves (e.g. one keystroke) drain in well under this delay, so the banner
-  // never flashes — which previously caused a layout jump on every keypress.
+  // Only show the sync banner once writes have been pending for a while. Normal
+  // saves — including an Appwrite cold start — drain well within this delay;
+  // the hint is meant for real backlogs, not for every save (#149).
   const [syncVisible, setSyncVisible] = useState(false);
   useEffect(() => {
     if (pendingWrites > 0) {
-      const id = window.setTimeout(() => setSyncVisible(true), 800);
+      const id = window.setTimeout(() => setSyncVisible(true), 15_000);
       return () => window.clearTimeout(id);
     }
     setSyncVisible(false);

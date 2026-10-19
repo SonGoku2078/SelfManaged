@@ -130,7 +130,11 @@ function load(): Op[] {
   try {
     const raw = localStorage.getItem(KEY);
     const arr = raw ? (JSON.parse(raw) as Op[]) : [];
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    // Pre-#149 task reorders renumber the whole list densely (0, 1, 2, …):
+    // hundreds of rate-limited writes that also wipe the spacing a drag
+    // relies on. Their order was carried over by the #149 migration.
+    return arr.filter((o) => !(o.kind === 'task.reorder' && o.payload?.step === undefined));
   } catch {
     return [];
   }
@@ -214,7 +218,7 @@ const handlers: Record<string, (p: any) => Promise<unknown>> = {
     return saved;
   },
   'task.remove':      (p) => tasksApi.remove(p.id),
-  'task.reorder':     (p) => tasksApi.reorder(p.ids),
+  'task.reorder':     (p) => tasksApi.reorder(p.ids, p.step),
   'project.create':   (p) => projectsApi.create(p.project),
   'project.update':   (p) => projectsApi.update(p.id, p.patch),
   'project.remove':   (p) => projectsApi.remove(p.id),
@@ -241,6 +245,18 @@ const handlers: Record<string, (p: any) => Promise<unknown>> = {
 
 export function pendingCount(): number {
   return queue.length;
+}
+
+// Is an op of this kind still queued (and not just finishing on the wire)?
+export function hasPending(kind: string): boolean {
+  return queue.some((o) => o.kind === kind && !(o === inFlight && inFlightSuperseded));
+}
+
+// Pending ops the user should hear about. A reorder only changes the sort
+// order — nothing gets lost if it takes a while, so it never raises the
+// "Änderungen werden synchronisiert" hint (#149).
+export function visiblePendingCount(): number {
+  return queue.filter((o) => !isReorder(o)).length;
 }
 
 // Bumped on every enqueue. loadAll() compares it before/after its fetch: if the

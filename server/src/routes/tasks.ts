@@ -163,9 +163,10 @@ router.post('/', (req, res) => {
 // PATCH /api/tasks/reorder  (must be before /:id)
 router.patch('/reorder', (req, res) => {
   // offset: the client sends long lists in chunks — chunk k starts at sort_order offset.
-  const { ids, offset = 0 } = req.body as { ids: string[]; offset?: number };
+  // step: gap between neighbours, so a later drag writes only the moved task (#149).
+  const { ids, offset = 0, step = 1 } = req.body as { ids: string[]; offset?: number; step?: number };
   const upd = db.prepare('UPDATE tasks SET sort_order = ? WHERE id = ?');
-  db.transaction(() => ids.forEach((id, i) => upd.run(Number(offset) + i, id)))();
+  db.transaction(() => ids.forEach((id, i) => upd.run((Number(offset) + i) * (Number(step) || 1), id)))();
   res.status(204).end();
 });
 
