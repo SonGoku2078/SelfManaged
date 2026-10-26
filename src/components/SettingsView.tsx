@@ -771,13 +771,19 @@ function MobileAccessSection() {
 // On Appwrite the feed is a public HTTPS function — reachable from anywhere.
 function CalendarFeedSection() {
   const [urls, setUrls] = useState<string[]>([]);
+  const [blockerUrls, setBlockerUrls] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [copyFailed, setCopyFailed] = useState<string | null>(null);
   useEffect(() => {
     let on = true;
     calendarFeedApi.get()
-      .then((d) => { if (on) { setUrls(Array.isArray(d.urls) ? d.urls : []); setLoaded(true); } })
+      .then((d) => {
+        if (!on) return;
+        setUrls(Array.isArray(d.urls) ? d.urls : []);
+        setBlockerUrls(Array.isArray(d.blockerUrls) ? d.blockerUrls : []);
+        setLoaded(true);
+      })
       .catch(() => { if (on) setLoaded(true); });
     return () => { on = false; };
   }, []);
@@ -789,6 +795,23 @@ function CalendarFeedSection() {
     setCopyFailed(ok ? null : u);
     window.setTimeout(() => { setCopied(null); setCopyFailed(null); }, ok ? 1500 : 4000);
   };
+  const urlList = (list: string[]) => (
+    <ul className="settings-lan-list">
+      {list.map((u) => (
+        <li key={u}>
+          <code>{u}</code>{' '}
+          <button className="theme-btn" onClick={() => copy(u)}>
+            {copied === u ? '✓ kopiert' : copyFailed === u ? '✕ nicht kopiert' : '📋 Kopieren'}
+          </button>
+          {copyFailed === u && (
+            <p className="settings-hint settings-copy-failed">
+              Kopieren nicht möglich — URL markieren und Strg+C drücken.
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
   return (
     <section className="settings-section">
       <h3 className="settings-heading">📆 Kalender-Feed (ICS)</h3>
@@ -803,21 +826,17 @@ function CalendarFeedSection() {
       ) : urls.length === 0 ? (
         <p className="settings-hint">Feed nicht verfügbar (offline?).</p>
       ) : (
-        <ul className="settings-lan-list">
-          {urls.map((u) => (
-            <li key={u}>
-              <code>{u}</code>{' '}
-              <button className="theme-btn" onClick={() => copy(u)}>
-                {copied === u ? '✓ kopiert' : copyFailed === u ? '✕ nicht kopiert' : '📋 Kopieren'}
-              </button>
-              {copyFailed === u && (
-                <p className="settings-hint settings-copy-failed">
-                  Kopieren nicht möglich — URL markieren und Strg+C drücken.
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+        urlList(urls)
+      )}
+      {blockerUrls.length > 0 && (
+        <>
+          <p className="settings-hint">
+            🧱 <strong>Projektblocker</strong> als eigener Kalender — separat abonnieren, dann
+            unabhängig ein- und ausblendbar. Jeder Blocker erscheint wöchentlich mit dem
+            Projektnamen; in der Beschreibung stehen die offenen Tasks der aktuellen Woche.
+          </p>
+          {urlList(blockerUrls)}
+        </>
       )}
     </section>
   );

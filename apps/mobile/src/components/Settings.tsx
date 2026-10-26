@@ -135,22 +135,24 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   // ICS calendar feed URL (issue #24) — token-secured, for subscribing from an
   // external calendar app. Via apiFetch so it also works on Appwrite.
   const [feedUrl, setFeedUrl] = useState('');
-  const [feedCopied, setFeedCopied] = useState(false);
+  const [blockerFeedUrl, setBlockerFeedUrl] = useState('');
+  const [feedCopied, setFeedCopied] = useState('');
   useEffect(() => {
     let on = true;
     calendarFeedApi.get()
       .then((d) => {
         const url = d?.urls?.[0] ?? (d?.token ? `${getBaseUrl()}/calendar/${d.token}.ics` : '');
         if (on && url) setFeedUrl(url);
+        if (on && d?.blockerUrls?.[0]) setBlockerFeedUrl(d.blockerUrls[0]);
       })
       .catch(() => {});
     return () => { on = false; };
   }, []);
-  const copyFeed = async () => {
+  const copyFeed = async (u: string) => {
     try {
-      await navigator.clipboard.writeText(feedUrl);
-      setFeedCopied(true);
-      setTimeout(() => setFeedCopied(false), 1500);
+      await navigator.clipboard.writeText(u);
+      setFeedCopied(u);
+      setTimeout(() => setFeedCopied(''), 1500);
     } catch {
       /* WebView clipboard blocked — the code block stays selectable */
     }
@@ -239,8 +241,17 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           <div className="m-settings-info">
             📆 Kalender-Feed (ICS) — im eigenen Kalender abonnieren (Proton, Google, Outlook):<br />
             <code style={{ wordBreak: 'break-all', userSelect: 'all' }}>{feedUrl}</code>
-            <button className="m-btn-ghost" onClick={copyFeed}>
-              {feedCopied ? '✓ kopiert' : '📋 Link kopieren'}
+            <button className="m-btn-ghost" onClick={() => copyFeed(feedUrl)}>
+              {feedCopied === feedUrl ? '✓ kopiert' : '📋 Link kopieren'}
+            </button>
+          </div>
+        )}
+        {blockerFeedUrl && (
+          <div className="m-settings-info">
+            🧱 Projektblocker als eigener Kalender (separat abonnieren, unabhängig ein-/ausblendbar):<br />
+            <code style={{ wordBreak: 'break-all', userSelect: 'all' }}>{blockerFeedUrl}</code>
+            <button className="m-btn-ghost" onClick={() => copyFeed(blockerFeedUrl)}>
+              {feedCopied === blockerFeedUrl ? '✓ kopiert' : '📋 Link kopieren'}
             </button>
           </div>
         )}

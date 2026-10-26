@@ -313,7 +313,7 @@ export default async ({ req, res, error }) => {
       const baseUrl = (process.env.ICS_PUBLIC_BASE_URL ?? '').replace(/\/+$/, '');
       const token = process.env.ICS_TOKEN ?? '';
       if (!baseUrl || !token) return response(res, { error: 'ICS feed is not configured' }, 503);
-      return response(res, { token, baseUrl, urls: [`${baseUrl}/calendar/${token}.ics`] });
+      return response(res, { token, baseUrl, urls: [`${baseUrl}/calendar/${token}.ics`], blockerUrls: [`${baseUrl}/calendar/${token}/projektblocker.ics`] });
     }
 
     if (path === '/api/settings') {
