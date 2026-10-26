@@ -2,8 +2,8 @@
 
 | Feld | Wert |
 |---|---|
-| Status | gate-go |
-| Nächste Rolle | cicd-engineer |
+| Status | done |
+| Nächste Rolle | — (User: Blocker-URL in Proton abonnieren) |
 | Owner-Rolle | cicd-engineer |
 | Datum | 2026-10-26 |
 
@@ -51,4 +51,6 @@ Branch `feat/blocker-calendar-feed`. Dateien: `apps/functions/ics/src/main.js`, 
 
 ## 6. CI/CD & Deployment
 
-- offen
+- **PR #153** (Squash) gemergt, CI grün.
+- **`appwrite-v18`:** Appwrite Deploy erfolgreich (Functions + Site), vom Nutzer freigegeben.
+- **`mobile-v0.5.27`:** APK gebaut.

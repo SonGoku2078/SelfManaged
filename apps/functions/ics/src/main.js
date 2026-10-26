@@ -2,6 +2,12 @@ import crypto from 'node:crypto';
 import { Client, Query, TablesDB } from 'node-appwrite';
 
 const DATABASE_ID = 'selfmanaged-prod';
+// Public PROD site. Subscribed calendars are read-only, so every event links
+// back into the app (task: #/t/<number>, blocker: its project window).
+const SITE_URL = (process.env.SITE_URL || 'https://selfmanaged-prod-6aaa45fb.appwrite.network').replace(/\/+$/, '');
+export const taskUrl = (task) => (task.number != null ? `${SITE_URL}/#/t/${task.number}` : null);
+export const projectUrl = (project) => `${SITE_URL}/?fenster=project&id=${encodeURIComponent(project.legacyId)}`;
+const OPEN_LABEL = 'In SelfManaged öffnen:';
 // Timed tasks without a duration last 30 minutes (Nozbe default).
 export const DEFAULT_DURATION_MIN = 30;
 // The function runs in UTC; the user's day and clock are Swiss. Events carry
@@ -76,7 +82,10 @@ export function tasksToIcs(tasks, projects) {
     const recurrence = rrule(task, allDay);
     if (recurrence) lines.push(recurrence);
     lines.push(fold(`SUMMARY:${escapeText(`${task.completed ? '✓ ' : ''}${task.title}`)}`));
-    if (String(task.description ?? '').trim()) lines.push(fold(`DESCRIPTION:${escapeText(task.description)}`));
+    const link = taskUrl(task);
+    const description = [String(task.description ?? '').trim(), link && `${OPEN_LABEL} ${link}`].filter(Boolean).join('\n\n');
+    if (description) lines.push(fold(`DESCRIPTION:${escapeText(description)}`));
+    if (link) lines.push(fold(`URL:${link}`));
     const project = projectNames.get(task.projectId);
     if (project) lines.push(fold(`CATEGORIES:${escapeText(project)}`));
     lines.push('END:VEVENT');
@@ -128,8 +137,10 @@ export function blockersToIcs(blockers, projects, tasks = [], now = new Date()) 
       fold(`SUMMARY:${escapeText(project.name)}`),
     ];
     if (blocker.$updatedAt) lines.push(`LAST-MODIFIED:${toUtcStamp(new Date(blocker.$updatedAt))}`);
+    const link = projectUrl(project);
     const weekTasks = weekTasksOf(project.legacyId);
-    if (weekTasks.length) lines.push(fold(`DESCRIPTION:${escapeText(weekTasks.join('\n'))}`));
+    const description = [weekTasks.join('\n'), `${OPEN_LABEL} ${link}`].filter(Boolean).join('\n\n');
+    lines.push(fold(`DESCRIPTION:${escapeText(description)}`), fold(`URL:${link}`));
     lines.push('TRANSP:OPAQUE', 'END:VEVENT');
     return [lines.join('\r\n')];
   });

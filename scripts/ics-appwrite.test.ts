@@ -40,6 +40,13 @@ assert.ok(late.includes('DTEND;TZID=Europe/Zurich:20261006T001500'), late);
 const rec = ics({ startMinutes: 8 * 60, recurrence: 'daily', recurrenceEnd: '2026-10-31T00:00:00.000Z' });
 assert.ok(rec.includes('RRULE:FREQ=DAILY;UNTIL=20261031T235959Z'), rec);
 
+// Link back into the app (subscribed calendars are read-only).
+const linked = ics({ number: 42, description: 'Notiz' });
+assert.ok(linked.includes('URL:https://selfmanaged-prod-6aaa45fb.appwrite.network/#/t/42'), linked);
+assert.ok(linked.includes('DESCRIPTION:Notiz\\n\\nIn SelfManaged öffnen: https://'), 'link after the note');
+assert.ok(ics({ number: 7 }).includes('DESCRIPTION:In SelfManaged öffnen: https://'), 'link alone without note');
+assert.ok(!ics({}).includes('URL:'), 'no number → no link');
+
 // ── Project blocker feed (second calendar) ──────────────────────────────────
 const projects = [{ legacyId: 'p1', name: 'SM Plattform' }, { legacyId: 'p2', name: 'Andere' }];
 const blocker = (p: Record<string, unknown>) => ({
@@ -64,6 +71,8 @@ assert.ok(blk.includes('RRULE:FREQ=WEEKLY;BYDAY=MO,WE'), 'weekly on the blocker 
 assert.ok(blk.includes('SUMMARY:SM Plattform'), 'titled with the project name');
 // Description: this week's open root tasks of the project, starred first.
 assert.ok(blk.includes('DESCRIPTION:★ Wichtig\\n• Normal'), blk);
+assert.ok(blk.replace(/\r\n /g, '').includes('URL:https://selfmanaged-prod-6aaa45fb.appwrite.network/?fenster=project&id=p1'), 'blocker links to its project window');
+assert.ok(blk.replace(/\r\n /g, '').includes('• Normal\\n\\nIn SelfManaged öffnen: https://'), 'link after the task list');
 assert.ok(!blk.includes('Nächste Woche') && !blk.includes('Subtask') && !blk.includes('Fremd'), 'only this week, root, own project');
 // Blockers of deleted projects or without weekdays are skipped.
 const none = blockersToIcs([blocker({ projectId: 'gone' }), blocker({ legacyId: 'b2', weekdays: [] })], projects, [], now) as string;
