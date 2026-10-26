@@ -82,7 +82,58 @@ export function tasksToIcs(tasks, projects) {
     lines.push('END:VEVENT');
     return lines.join('\r\n');
   });
-  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//SelfManaged//Task Manager//DE', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:SelfManaged Aufgaben', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H', `X-WR-TIMEZONE:${TZID}`, ...VTIMEZONE, ...events, 'END:VCALENDAR'].join('\r\n') + '\r\n';
+  return calendar('SelfManaged Aufgaben', events);
+}
+
+const calendar = (name, events) =>
+  ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//SelfManaged//Task Manager//DE', 'CALSCALE:GREGORIAN', fold(`X-WR-CALNAME:${escapeText(name)}`), 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H', `X-WR-TIMEZONE:${TZID}`, ...VTIMEZONE, ...events, 'END:VCALENDAR'].join('\r\n') + '\r\n';
+
+// Blocker weekdays: 0 = Monday … 6 = Sunday (same as ProjectBlocker in the app).
+const BYDAY = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+const DAY_MS = 86_400_000;
+// Monday of the Zurich week containing `value`, as naive UTC midnight.
+const zurichMonday = (value) => {
+  const d = zurichDay(value);
+  return new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY_MS);
+};
+
+// Project blockers as their own subscribable calendar: one weekly series per
+// blocker, titled with the project name, exactly like the week grid shows them
+// every week. The description lists the project's open tasks for the current
+// week (starred first) — the same ones the app shows inside the blocker.
+export function blockersToIcs(blockers, projects, tasks = [], now = new Date()) {
+  const projectsById = new Map(projects.map((p) => [p.legacyId, p]));
+  const weekStart = zurichMonday(now).getTime();
+  const inThisWeek = (t) => {
+    if (!t.dueDate) return false;
+    const due = zurichDay(t.dueDate).getTime();
+    return due >= weekStart && due < weekStart + 7 * DAY_MS;
+  };
+  const weekTasksOf = (projectId) => tasks
+    .filter((t) => t.projectId === projectId && !t.completed && !t.parentId && (t.thisWeek || inThisWeek(t)))
+    .sort((a, b) => (a.starred === b.starred ? 0 : a.starred ? -1 : 1))
+    .map((t) => `${t.starred ? '★' : '•'} ${t.title}`);
+  const events = blockers.flatMap((blocker) => {
+    const project = projectsById.get(blocker.projectId);
+    const days = [...new Set(blocker.weekdays ?? [])].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort((a, b) => a - b);
+    if (!project || !days.length) return [];
+    // The series starts in the week the blocker was created, on its first weekday.
+    const anchor = zurichMonday(blocker.$createdAt ?? blocker.$updatedAt ?? now);
+    const start = new Date(anchor.getTime() + days[0] * DAY_MS + (blocker.startMinutes ?? 0) * 60_000);
+    const end = new Date(start.getTime() + (blocker.durationMin || 60) * 60_000);
+    const lines = [
+      'BEGIN:VEVENT', fold(`UID:blocker-${blocker.legacyId}@selfmanaged`), `DTSTAMP:${toUtcStamp(now)}`,
+      `DTSTART;TZID=${TZID}:${toLocalStamp(start)}`, `DTEND;TZID=${TZID}:${toLocalStamp(end)}`,
+      `RRULE:FREQ=WEEKLY;BYDAY=${days.map((d) => BYDAY[d]).join(',')}`,
+      fold(`SUMMARY:${escapeText(project.name)}`),
+    ];
+    if (blocker.$updatedAt) lines.push(`LAST-MODIFIED:${toUtcStamp(new Date(blocker.$updatedAt))}`);
+    const weekTasks = weekTasksOf(project.legacyId);
+    if (weekTasks.length) lines.push(fold(`DESCRIPTION:${escapeText(weekTasks.join('\n'))}`));
+    lines.push('TRANSP:OPAQUE', 'END:VEVENT');
+    return [lines.join('\r\n')];
+  });
+  return calendar('SelfManaged Projektblocker', events);
 }
 
 function tokenMatches(expected, received) {
@@ -93,7 +144,8 @@ function tokenMatches(expected, received) {
 export default async ({ req, res, error }) => {
   try {
     const path = new URL(req.url || req.path || '/', 'https://function.local').pathname;
-    const match = path.match(/^\/calendar\/([^/]+)\.ics$/);
+    // /calendar/<token>.ics = tasks, /calendar/<token>/projektblocker.ics = blockers.
+    const match = path.match(/^\/calendar\/([^/]+?)(\/projektblocker)?\.ics$/);
     if (req.method !== 'GET' || !match || !tokenMatches(process.env.ICS_TOKEN ?? '', decodeURIComponent(match[1]))) {
       return res.text('Not found', 404);
     }
@@ -102,6 +154,18 @@ export default async ({ req, res, error }) => {
       .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID)
       .setKey(req.headers['x-appwrite-key']);
     const db = new TablesDB(client);
+    if (match[2]) {
+      const [blockers, projects, tasks] = await Promise.all([
+        db.listRows({ databaseId: DATABASE_ID, tableId: 'blockers', queries: [Query.limit(5000)], total: false }),
+        db.listRows({ databaseId: DATABASE_ID, tableId: 'projects', queries: [Query.limit(5000)], total: false }),
+        db.listRows({ databaseId: DATABASE_ID, tableId: 'tasks', queries: [Query.equal('completed', false), Query.limit(5000)], total: false }),
+      ]);
+      return res.text(blockersToIcs(blockers.rows, projects.rows, tasks.rows), 200, {
+        'content-type': 'text/calendar; charset=utf-8',
+        'content-disposition': 'inline; filename="selfmanaged-projektblocker.ics"',
+        'cache-control': 'no-cache',
+      });
+    }
     const [tasks, projects] = await Promise.all([
       db.listRows({ databaseId: DATABASE_ID, tableId: 'tasks', queries: [Query.isNotNull('dueDate'), Query.limit(5000)], total: false }),
       db.listRows({ databaseId: DATABASE_ID, tableId: 'projects', queries: [Query.limit(5000)], total: false }),

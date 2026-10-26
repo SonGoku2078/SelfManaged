@@ -37,5 +37,6 @@ export const settingsApi = {
 // (#24). Goes through apiFetch so it works on Appwrite (function execution
 // with the user's JWT) as well as against the LAN server.
 export const calendarFeedApi = {
-  get: () => apiFetch<{ token?: string; baseUrl?: string; urls?: string[] }>('/api/calendar-feed'),
+  // blockerUrls: second calendar with the project blockers (Appwrite only).
+  get: () => apiFetch<{ token?: string; baseUrl?: string; urls?: string[]; blockerUrls?: string[] }>('/api/calendar-feed'),
 };
