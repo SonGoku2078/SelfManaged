@@ -314,6 +314,7 @@ const defaultUIState: UIState = {
     dueFrom: null,
     dueTo: null,
     assigneeId: null,
+    starred: false,
   },
   sortField: 'manual',
   sortDir: 'asc',

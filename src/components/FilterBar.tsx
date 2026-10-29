@@ -79,8 +79,10 @@ export default function FilterBar({
     filters.completed !== null ||
     filters.dueFrom !== null ||
     filters.dueTo !== null ||
-    (filters.assigneeId ?? null) !== null;
+    (filters.assigneeId ?? null) !== null ||
+    !!filters.starred;
   const activeCount = [
+    filters.starred ? 'starred' : null,
     filters.projectId,
     filters.categoryId,
     filters.priority,
@@ -89,6 +91,18 @@ export default function FilterBar({
     filters.assigneeId ?? null,
   ].filter((v) => v !== null && v !== undefined).length;
   const dateActive = filters.dueFrom !== null || filters.dueTo !== null;
+  // ★ = Next Action. One click shows only those — e.g. one per section of a
+  // big project. Stays visible even with collapsed filters.
+  const starredToggle = (
+    <button
+      className={`filter-star-btn ${filters.starred ? 'active' : ''}`}
+      title={filters.starred ? 'Alle Tasks anzeigen' : 'Nur Next Actions (★) anzeigen'}
+      aria-pressed={!!filters.starred}
+      onClick={() => setFilter('starred', !filters.starred)}
+    >
+      ★ Next Actions
+    </button>
+  );
 
   if (collapsed) {
     return (
@@ -114,6 +128,7 @@ export default function FilterBar({
             onClear={() => setSearchQuery('')}
           />
         )}
+        {starredToggle}
         {activeCount > 0 && <span className="filter-active-badge">{activeCount}</span>}
         {hasActiveFilter && (
           <button className="filter-reset" onClick={resetFilters}>
@@ -149,6 +164,7 @@ export default function FilterBar({
           onClear={() => setSearchQuery('')}
         />
       )}
+      {starredToggle}
 
       {!inSingleProject && (
         <select

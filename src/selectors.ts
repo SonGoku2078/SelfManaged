@@ -183,8 +183,11 @@ export const gridSearchTasks = (
   return tasks.filter((t) => hit(t) || tasks.some((c) => c.parentId === t.id && hit(c)));
 };
 
-const matchesFilters = (task: Task, ui: UIState) => {
+// starredParents: ids of tasks with a starred open subtask — subtasks only
+// show nested under their parent, so the parent has to stay in the list.
+const matchesFilters = (task: Task, ui: UIState, starredParents: Set<string>) => {
   const f = ui.filters;
+  if (f.starred && !task.starred && !starredParents.has(task.id)) return false;
   if (f.projectId && task.projectId !== f.projectId) return false;
   if (f.categoryId && !task.categoryIds.includes(f.categoryId)) return false;
   if (f.priority && task.priority !== f.priority) return false;
@@ -415,7 +418,12 @@ export const selectVisibleTasks = (
   // in these views, so its filters must only apply there — otherwise a leftover
   // project filter silently shrinks Next Week / Someday / Calendar etc.
   if (FILTERABLE_VIEWS.has(ui.currentView)) {
-    result = result.filter((t) => matchesFilters(t, ui));
+    const starredParents = new Set(
+      ui.filters.starred
+        ? tasks.filter((t) => t.parentId && t.starred && !t.completed).map((t) => t.parentId as string)
+        : []
+    );
+    result = result.filter((t) => matchesFilters(t, ui, starredParents));
   }
   result = result.filter((t) => matchesSearch(t, ui.searchQuery, members));
 
