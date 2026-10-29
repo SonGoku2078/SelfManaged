@@ -257,6 +257,7 @@ export interface Filters {
   dueFrom: string | null; // YYYY-MM-DD inclusive lower bound on dueDate
   dueTo: string | null; // YYYY-MM-DD inclusive upper bound on dueDate
   assigneeId?: string | null; // filter by responsible member
+  starred?: boolean; // only ★ Next Actions (or tasks with a starred open subtask)
 }
 
 export interface SavedView {

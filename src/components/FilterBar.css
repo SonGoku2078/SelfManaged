@@ -5,8 +5,34 @@
   padding: 6px 16px;
   border-bottom: 1px solid var(--border-light);
   background: #fff;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  /* Wrap onto a second row instead of scrolling sideways (and the date
+     popover is no longer clipped by an overflow container). */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+/* ★ Next Actions toggle. */
+.filter-star-btn {
+  border: 1px solid var(--border-light);
+  background: #fff;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.filter-star-btn:hover {
+  border-color: #f59e0b;
+  color: #b45309;
+}
+.filter-star-btn.active {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #b45309;
+  font-weight: 600;
 }
 
 .filter-bar-collapsed {

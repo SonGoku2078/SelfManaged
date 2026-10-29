@@ -49,6 +49,8 @@ export default function TaskList({
   const selectProject = useStore((s) => s.selectProject);
   const selectedTaskId = useStore((s) => s.ui.selectedTaskId);
   const currentView = useStore((s) => s.ui.currentView);
+  // ★ filter on: an empty section means "no Next Action defined here yet".
+  const starredOnly = useStore((s) => !!s.ui.filters.starred);
   const selectedProjectId = useStore((s) => s.ui.selectedProjectId);
   const selectedProjectIds = useStore((s) => s.ui.selectedProjectIds);
   const projects = useStore((s) => s.projects);
@@ -725,9 +727,11 @@ export default function TaskList({
         {ungrouped.map((t) => renderTask(t))}
         {ungrouped.length === 0 && (
           <p className="section-empty-hint">
-            {tasks.length === 0
-              ? (emptyHint ?? 'Noch keine Aufgaben in diesem Projekt.')
-              : 'Keine Aufgaben ohne Gruppe.'}
+            {starredOnly
+              ? (scopeSections.length ? 'Keine Next Action ohne Gruppe.' : 'Keine Next Action (★) hier.')
+              : tasks.length === 0
+                ? (emptyHint ?? 'Noch keine Aufgaben in diesem Projekt.')
+                : 'Keine Aufgaben ohne Gruppe.'}
           </p>
         )}
       </div>
@@ -817,7 +821,9 @@ export default function TaskList({
             >
               {secTasks.map((t) => renderTask(t))}
               {secTasks.length === 0 && (
-                <p className="section-empty-hint">Aufgaben hierher ziehen…</p>
+                <p className="section-empty-hint">
+                  {starredOnly ? '☆ Noch keine Next Action in dieser Gruppe' : 'Aufgaben hierher ziehen…'}
+                </p>
               )}
               {/* Create a task directly inside this section (#26). */}
               {addingTaskSecId === sec.id ? (
