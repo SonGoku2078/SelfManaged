@@ -1,6 +1,6 @@
-// Proves #23/#112: the manual ☀️ Heute flag (todayDate) shows a task in the
-// Today view alongside due-today tasks and CARRIES OVER midnight until done or
-// removed (#112 — it used to expire overnight). A future-dated flag is not yet active.
+// Proves #23/#158: the manual ☀️ Heute flag (todayDate) shows a task in the
+// Today view alongside due-today tasks and EXPIRES at midnight (#158 — reverts
+// the carry-over of #112). A future-dated flag is not yet active.
 // Run: npx tsx scripts/todayflag.test.ts
 import assert from 'node:assert';
 import { selectVisibleTasks, isTodayFlagActive, dateKey, addDays } from '../src/selectors';
@@ -25,10 +25,11 @@ const pinnedYesterday = task({ id: 'stale', number: 3, title: 'Gestern gepinnt',
 const plain = task({ id: 'plain', number: 4, title: 'Ohne alles' });
 const pinnedTomorrow = task({ id: 'future', number: 5, title: 'Für morgen geplant', todayDate: tomorrowKey });
 const pinnedDone = task({ id: 'done', number: 6, title: 'Gestern gepinnt, erledigt', todayDate: yesterdayKey, completed: true });
+const pinnedDoneToday = task({ id: 'pinDone', number: 8, title: 'Heute gepinnt, erledigt', todayDate: todayKey, completed: true, completedAt: now });
 
 // isTodayFlagActive: only today's key counts.
 assert.ok(isTodayFlagActive(pinnedToday), 'flag with today key is active');
-assert.ok(isTodayFlagActive(pinnedYesterday), 'flag from yesterday carries over (#112)');
+assert.ok(!isTodayFlagActive(pinnedYesterday), 'flag from yesterday has expired overnight (#158)');
 assert.ok(!isTodayFlagActive(pinnedTomorrow), 'flag planned for tomorrow is not active yet');
 assert.ok(!isTodayFlagActive(plain), 'no todayDate → not active');
 
@@ -44,12 +45,12 @@ const ui = {
 } as unknown as UIState;
 const all = [dueToday, pinnedToday, pinnedYesterday, plain, pinnedTomorrow, pinnedDone];
 const doneToday = task({ id: 'doneToday', number: 7, title: 'Gestern gepinnt, heute erledigt', todayDate: yesterdayKey, completed: true, completedAt: now });
-const visible = selectVisibleTasks([...all, doneToday], ui).map((t) => t.id);
-assert.deepStrictEqual(visible.sort(), ['doneToday', 'due', 'pin', 'stale'],
-  'Heute = due today ∪ open pins (today or earlier) ∪ pins finished today — old finished pins stay out');
+const visible = selectVisibleTasks([...all, doneToday, pinnedDoneToday], ui).map((t) => t.id);
+assert.deepStrictEqual(visible.sort(), ['due', 'pin', 'pinDone'],
+  "Heute = due today ∪ today's pins (open or done) — yesterday's pins are gone");
 
 // Mobile Heute tab uses the same rules (open root tasks only).
 const mobile = mobileToday(all).map((t) => t.id);
-assert.deepStrictEqual(mobile.sort(), ['due', 'pin', 'stale'], 'mobileToday matches the web rule');
+assert.deepStrictEqual(mobile.sort(), ['due', 'pin'], 'mobileToday matches the web rule');
 
-console.log(`✅ PASS — Heute view shows [${visible.join(', ')}]; yesterday's pin (${yesterdayKey}) carried over, tomorrow's not yet active.`);
+console.log(`✅ PASS — Heute view shows [${visible.join(', ')}]; yesterday's pin (${yesterdayKey}) expired, tomorrow's not yet active.`);

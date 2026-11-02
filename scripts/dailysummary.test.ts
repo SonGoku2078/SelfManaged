@@ -18,7 +18,8 @@ const at = (d: Date, h: number, m = 0) => new Date(d.getFullYear(), d.getMonth()
 const evening = at(new Date(2026, 9, 1), 21); // Do 1.10. 21:00 — last sync of the day
 const tomorrow = addDays(at(evening, 0), 1);
 const tasks = [
-  task({ title: 'Wohnung aufräumen', todayDate: dateKey(evening) }), // ☀️ von heute → morgen weiter
+  task({ title: 'Wohnung aufräumen', todayDate: dateKey(tomorrow) }), // ☀️ für morgen geplant
+  task({ title: 'Gestern gepinnt', todayDate: dateKey(evening) }), // ☀️ von heute → verfällt über Nacht (#158)
   task({ title: 'Arzt', dueDate: at(tomorrow, 9, 30), startMinutes: 9 * 60 + 30 }),
   task({ title: 'Weekly schauen', dueDate: at(tomorrow, 0) }),
   task({ title: 'Erledigt', dueDate: at(tomorrow, 0), completed: true }),
@@ -35,10 +36,11 @@ assert.equal(+s[0].at, +at(tomorrow, 8), 'first = tomorrow 08:00 (today 08:00 pa
 assert.equal(s[0].title, '📋 Heute: 3 Aufgaben');
 assert.ok(s[0].body.includes('Arzt') && s[0].body.includes('Wohnung aufräumen') && s[0].body.includes('Weekly schauen'), s[0].body);
 assert.equal(s[0].largeBody, '• 09:30  Arzt\n• Weekly schauen\n• Wohnung aufräumen', 'Uhrzeit zuerst, dann wie im Heute-Tab (datiert vor ☀️)');
-assert.ok(!s[0].body.includes('Erledigt') && !s[0].body.includes('Unteraufgabe'));
+assert.ok(!s[0].body.includes('Erledigt') && !s[0].body.includes('Unteraufgabe') && !s[0].body.includes('Gestern gepinnt'));
 
-// Übermorgen: eigener Inhalt (☀️ trägt weiter + der dann fällige Task).
-assert.ok(s[1].body.includes('Übermorgen') && s[1].body.includes('Wohnung aufräumen') && !s[1].body.includes('Arzt'), s[1].body);
+// Übermorgen: eigener Inhalt (nur der dann fällige Task; ☀️ von morgen ist verfallen).
+const s1 = `${s[1].title} ${s[1].body}`;
+assert.ok(s1.includes('Übermorgen') && !s1.includes('Wohnung aufräumen') && !s1.includes('Arzt'), s1);
 
 // Genau 1 Task → Name als Titel + Deeplink; 0 Tasks → Hinweis.
 const one = buildDailySummaries([task({ title: 'Nur einer', dueDate: at(tomorrow, 0) })], evening)[0];

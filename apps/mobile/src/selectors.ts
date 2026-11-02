@@ -46,7 +46,7 @@ export const mobileDoneThisWeek = (tasks: Task[]): Task[] => {
 
 // Heute on a given day: open tasks due that day (incl. a recurring series
 // hitting that day, #131) OR pinned via the ☀️ Heute
-// flag (carries over until done, #112), sorted by due date (undated pins
+// flag set for that day (expires at midnight, #158), sorted by due date (undated pins
 // last). Shared by the Heute tab and the 08:00 summary for future days.
 export const mobileAgenda = (tasks: Task[], day: Date): Task[] =>
   tasks
