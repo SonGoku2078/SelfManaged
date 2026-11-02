@@ -139,15 +139,13 @@ export interface DayPlan {
   ueberfaellig: ApiTask[];
 }
 
-// Tagesplan: geplant (todayDate = Datum; für HEUTE auch ältere ☀️-Markierungen,
-// die bleiben bis erledigt, #112) > fällig (dueDate = Datum) > überfällig
-// (dueDate < Datum, nur wenn Datum <= heute). Jeder Task genau einmal.
+// Tagesplan: geplant (todayDate = Datum; ☀️ verfällt um Mitternacht, #158) >
+// fällig (dueDate = Datum) > überfällig (dueDate < Datum, nur wenn Datum <=
+// heute). Jeder Task genau einmal.
 export function groupDayPlan(tasks: ApiTask[], datum: string, todayKey: string): DayPlan {
   if (!isDateKey(datum)) throw new LogicError(`Ungültiges Datum „${datum}" — erwartet YYYY-MM-DD.`);
   const open = openTasks(tasks).sort(byAppOrder);
-  const geplant = open.filter(
-    (t) => !!t.todayDate && (t.todayDate === datum || (datum === todayKey && t.todayDate < todayKey)),
-  );
+  const geplant = open.filter((t) => t.todayDate === datum);
   const seen = new Set(geplant.map((t) => t.id));
   const faellig = open.filter((t) => !seen.has(t.id) && dueKey(t) === datum);
   faellig.forEach((t) => seen.add(t.id));

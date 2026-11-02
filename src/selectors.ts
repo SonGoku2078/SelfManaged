@@ -64,13 +64,11 @@ export const dateKey = (d: Date) =>
     d.getDate()
   ).padStart(2, '0')}`;
 
-// Manual "Heute" flag: active from the day it was set until the task is done
-// or the flag is removed — it carries over midnight (#112; was: expired
-// overnight, so postponed "today" work vanished from Heute). A flag planned
-// for a future day (MCP task_planen) only starts counting on that day.
-// YYYY-MM-DD keys compare correctly as strings.
+// Manual "Heute" flag: active only on the day it was set (or planned for, MCP
+// task_planen) — it expires at midnight, the user re-picks each morning from
+// Nächste Aktion / Nächste Woche (#158; reverts the carry-over of #112).
 export const isTodayFlagActive = (task: Task, now = new Date()): boolean =>
-  !!task.todayDate && task.todayDate <= dateKey(now);
+  !!task.todayDate && task.todayDate === dateKey(now);
 
 export const isOverdue = (task: Task) =>
   !!task.dueDate && !task.completed && task.dueDate < startOfDay(new Date());
@@ -374,19 +372,9 @@ export const selectVisibleTasks = (
     case 'today': {
       const now = new Date();
       // Today = the day's agenda: due today (incl. a recurring series that
-      // hits today, #131) OR pinned via the ☀️ Heute flag (carries over until
-      // done, #112). Other overdue tasks live in Priorität.
-      result = result.filter((t) => {
-        if (isDueOn(t, now)) return true;
-        if (!isTodayFlagActive(t, now)) return false;
-        // Done tasks only if pinned or finished today — not every old pin
-        // ever completed (the Erledigt block would fill with history).
-        return (
-          !t.completed ||
-          t.todayDate === dateKey(now) ||
-          (!!t.completedAt && isSameDay(new Date(t.completedAt), now))
-        );
-      });
+      // hits today, #131) OR pinned via today's ☀️ Heute flag (expires at
+      // midnight, #158). Other overdue tasks live in Priorität.
+      result = result.filter((t) => isDueOn(t, now) || isTodayFlagActive(t, now));
       break;
     }
     case 'search':

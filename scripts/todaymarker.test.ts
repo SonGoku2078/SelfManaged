@@ -58,7 +58,7 @@ check('morgen faellig gilt NICHT als heute', !countsAsToday(dueTomorrow));
 const dueYesterday = task({ dueDate: day(-1) });
 check('gestern faellig gilt NICHT als heute', !countsAsToday(dueYesterday));
 const olderFlag = task({ todayDate: dateKey(day(-1)) });
-check('Flag von gestern bleibt bestehen und gilt als heute (#112)', countsAsToday(olderFlag) && !isImplicitToday(olderFlag));
+check('Flag von gestern ist ueber Nacht abgelaufen (#158)', !countsAsToday(olderFlag) && !isImplicitToday(olderFlag));
 const futureFlag = task({ todayDate: dateKey(day(1)) });
 check('Flag fuer morgen gilt noch NICHT als heute', !countsAsToday(futureFlag));
 const dueTodayEarly = task({ dueDate: day(0, 1) });

@@ -428,8 +428,8 @@ function App() {
       projectId,
       categoryIds,
       dueDate: ui.currentView === 'calendar' ? new Date(ui.currentDate) : null,
-      // Heute = plan, not deadline (#112): the ☀️ flag keeps the task in Heute
-      // until it is done, instead of a due date that turns it overdue tomorrow.
+      // Heute = plan, not deadline (#112): the ☀️ flag (expires at midnight,
+      // #158) instead of a due date that turns the task overdue tomorrow.
       todayDate: ui.currentView === 'today' ? dateKey(new Date()) : null,
       // Flag the task so it shows up in the view it was created in.
       someday: ui.currentView === 'someday',
