@@ -32,6 +32,15 @@ const bottomItems: { id: ViewType; icon: string; label: string; devOnly?: boolea
   { id: 'settings', icon: '⚙️', label: 'Einstellungen' },
 ];
 
+// Manually collapsed to icons — per device, remembered locally (half-screen windows).
+const PINNED_KEY = 'tm-sidebar-collapsed';
+function loadPinned(): boolean {
+  try { return localStorage.getItem(PINNED_KEY) === '1'; } catch { return false; }
+}
+function savePinned(v: boolean): void {
+  try { localStorage.setItem(PINNED_KEY, v ? '1' : '0'); } catch { /* storage blocked */ }
+}
+
 export default function Sidebar() {
   const currentView = useStore((s) => s.ui.currentView);
   const sidePanel = useStore((s) => s.ui.sidePanel);
@@ -74,7 +83,15 @@ export default function Sidebar() {
 
   // Collapse to icons when a contextual panel takes the left space — including
   // the Inbox project-assign panel (#32).
-  const collapsed = sidePanel !== 'none' || (currentView === 'inbox' && inboxPanel);
+  const autoCollapsed = sidePanel !== 'none' || (currentView === 'inbox' && inboxPanel);
+  const [pinned, setPinned] = useState(loadPinned);
+  const collapsed = pinned || autoCollapsed;
+  const togglePinned = () => {
+    setPinned((p) => {
+      savePinned(!p);
+      return !p;
+    });
+  };
 
   const handleNav = (id: ViewType) => {
     if (id === 'projects' || id === 'calendar' || id === 'someday') {
@@ -95,6 +112,17 @@ export default function Sidebar() {
     <div className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-brand" title="SelfManaged">
         <span className="sidebar-label">SelfManaged</span>
+        {/* Hidden while a panel collapses the menu on its own — expanding would do nothing. */}
+        {(pinned || !autoCollapsed) && (
+          <button
+            className="sidebar-toggle"
+            onClick={togglePinned}
+            title={pinned ? 'Menü ausklappen' : 'Menü einklappen'}
+            aria-label={pinned ? 'Menü ausklappen' : 'Menü einklappen'}
+          >
+            {pinned ? '»' : '«'}
+          </button>
+        )}
       </div>
 
       <div className="sidebar-items">
