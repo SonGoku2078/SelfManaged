@@ -23,6 +23,29 @@
   color: #fff;
 }
 
+.sidebar-toggle {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #aab2b8;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
 .sidebar-items {
   display: flex;
   flex-direction: column;
