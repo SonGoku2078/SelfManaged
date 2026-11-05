@@ -1,5 +1,6 @@
 // Die 15 Werkzeuge des MCP-Servers (#88, seit #100 mit task_bearbeiten/
-// task_loeschen, seit #130 legt task_anlegen auch Subtasks an).
+// task_loeschen, seit #130 legt task_anlegen auch Subtasks an, für Second Brain #10
+// kommentar_speichern/kommentar_loeschen).
 // Verdrahtet api.ts + logic.ts.
 // Jede Antwort: vorlesbarer deutscher Text + structuredContent; Fehler als
 // isError mit Klartext (AC-18) — nie ein Prozessabsturz.
@@ -9,6 +10,7 @@ import { ApiError, type TaskApi } from './api.js';
 import {
   LogicError,
   assertSubtaskParent,
+  commentPatch,
   completePatch,
   dateKey,
   duePatch,
@@ -21,9 +23,11 @@ import {
   nextSteps,
   planNewTask,
   planPatch,
+  removeCommentPatch,
   resolveProject,
   searchTasks,
   starPatch,
+  taskDetail,
   taskSummary,
   tasksOfProject,
   unplanPatch,
@@ -88,6 +92,7 @@ export function registerTools(server: McpServer, api: TaskApi): void {
   const lines = (tasks: ApiTask[], projects: ApiProject[], todayKey: string) =>
     tasks.map((t) => `- ${formatTaskLine(t, projectName(projects, t.projectId), todayKey, api.baseUrl)}`).join('\n');
   const summaries = (tasks: ApiTask[], projects: ApiProject[]) => tasks.map((t) => taskSummary(t, projectName(projects, t.projectId), api.baseUrl));
+  const details = (list: ApiTask[], all: ApiTask[], projects: ApiProject[]) => list.map((t) => taskDetail(t, all, projectName(projects, t.projectId), api.baseUrl));
 
   // Gemeinsamer Abschluss der Schreibwerkzeuge: Task per Referenz finden, PATCH, Antwort.
   const patchByRef = async (ref: { taskId?: string; taskNummer?: number }, patch: Record<string, unknown>, verb: string) => {
@@ -189,10 +194,10 @@ export function registerTools(server: McpServer, api: TaskApi): void {
     'tagesplan',
     {
       title: 'Tagesplan',
-      description: 'Der Plan für einen Tag (Standard: heute) in drei Gruppen: geplant (Heute-Marker auf dem Datum), fällig (Termin an dem Tag), überfällig (Termin davor, nur bei heute/vergangen). Für „Plan für morgen" das morgige Datum übergeben.',
-      inputSchema: { datum: DATE.optional() },
+      description: 'Der Plan für einen Tag (Standard: heute) in drei Gruppen: geplant (Heute-Marker auf dem Datum), fällig (Termin an dem Tag), überfällig (Termin davor, nur bei heute/vergangen). Für „Plan für morgen" das morgige Datum übergeben. mitDetails=true liefert bei geplant/fällig zusätzlich Beschreibung, Erfasst-Zeitpunkt, Kommentare (neueste zuerst) und offene Subtasks.',
+      inputSchema: { datum: DATE.optional(), mitDetails: z.boolean().optional().describe('Beschreibung, Kommentare und offene Subtasks mitliefern (für Second Brain)') },
     },
-    guard(async ({ datum }) => {
+    guard(async ({ datum, mitDetails }) => {
       const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
       const todayKey = dateKey(new Date());
       const plan = groupDayPlan(tasks, datum ?? todayKey, todayKey);
@@ -203,8 +208,8 @@ export function registerTools(server: McpServer, api: TaskApi): void {
       const text = parts.length ? parts.join('\n\n') : `Für ${plan.datum} ist nichts geplant, nichts fällig und nichts überfällig.`;
       return ok(text, {
         datum: plan.datum,
-        geplant: summaries(plan.geplant, projects),
-        faellig: summaries(plan.faellig, projects),
+        geplant: mitDetails ? details(plan.geplant, tasks, projects) : summaries(plan.geplant, projects),
+        faellig: mitDetails ? details(plan.faellig, tasks, projects) : summaries(plan.faellig, projects),
         ueberfaellig: summaries(plan.ueberfaellig, projects),
       });
     }),
@@ -383,6 +388,42 @@ export function registerTools(server: McpServer, api: TaskApi): void {
       const task = findTask(tasks, { id: taskId, number: taskNummer });
       await api.deleteTask(task.id);
       return ok(`Gelöscht: #${task.number} ${task.title}`, { geloescht: { id: task.id, number: task.number, title: task.title } });
+    }),
+  );
+
+  // ── Kommentare ────────────────────────────────────────────────────────────
+  server.registerTool(
+    'kommentar_speichern',
+    {
+      title: 'Kommentar speichern',
+      description:
+        'Hängt einen Kommentar an einen Task (wie in der App). Mit kommentarId eines bestehenden Kommentars wird dessen Text ersetzt, das Erstelldatum bleibt; eine neue kommentarId legt den Kommentar unter dieser id an (erneut senden ist gefahrlos).',
+      inputSchema: {
+        ...TASK_REF,
+        text: z.string().min(1).describe('Kommentartext'),
+        kommentarId: z.string().optional().describe('id des Kommentars (bestehend = ersetzen, neu = unter dieser id anlegen; leer = neue id)'),
+        autor: z.string().optional().describe('Angezeigter Autor (Standard „Claude")'),
+      },
+    },
+    guard(async ({ taskId, taskNummer, text, kommentarId, autor }) => {
+      const task = findTask(await api.getTasks(), { id: taskId, number: taskNummer });
+      const { patch, comment, neu } = commentPatch(task, { id: kommentarId, text, author: autor?.trim() || 'Claude' });
+      await api.patchTask(task.id, patch);
+      return ok(`${neu ? 'Kommentar hinzugefügt' : 'Kommentar geändert'}: #${task.number} ${task.title}`, { kommentar: comment, taskNummer: task.number, neu });
+    }),
+  );
+
+  server.registerTool(
+    'kommentar_loeschen',
+    {
+      title: 'Kommentar löschen',
+      description: 'Löscht einen Kommentar eines Tasks endgültig. Frag den Nutzer vorher, ob er wirklich löschen will.',
+      inputSchema: { ...TASK_REF, kommentarId: z.string().min(1).describe('id des Kommentars') },
+    },
+    guard(async ({ taskId, taskNummer, kommentarId }) => {
+      const task = findTask(await api.getTasks(), { id: taskId, number: taskNummer });
+      await api.patchTask(task.id, removeCommentPatch(task, kommentarId));
+      return ok(`Kommentar gelöscht: #${task.number} ${task.title}`, { geloescht: kommentarId, taskNummer: task.number });
     }),
   );
 }
