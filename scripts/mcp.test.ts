@@ -1,12 +1,12 @@
-// Proves #88 (TC-A11) + #130 (Subtasks): die reine Logik des MCP-Servers — Tagesplan-Gruppierung,
+// Proves #88 (TC-A11) + #130 (Subtasks) + Kommentare (Second Brain #10): die reine Logik des MCP-Servers — Tagesplan-Gruppierung,
 // Nummernvergabe, Projektnamen-Auflösung, Planen ⇒ Stern, Task-Adressierung,
 // Umgebungs-Erkennung. Kein Netz, kein Server.
 // Run: npx tsx scripts/mcp.test.ts
 import assert from 'node:assert';
 import {
-  assertSubtaskParent, buildNewTask, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
+  assertSubtaskParent, buildNewTask, commentPatch, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
   groupDayPlan, inboxTasks, LogicError, nextSteps, nextTaskNumber, newTaskId, planNewTask, planPatch,
-  resolveCategories, resolveProject, searchTasks, tasksOfProject, taskSummary, taskUrl, unplanPatch,
+  removeCommentPatch, resolveCategories, resolveProject, searchTasks, taskDetail, tasksOfProject, taskSummary, taskUrl, unplanPatch,
   type ApiProject, type ApiTask,
 } from '../apps/mcp/src/logic';
 
@@ -182,4 +182,35 @@ assert.match(formatTaskLine(st[1]), /Unteraufgabe/);
 assert.equal(taskSummary(st[1]).parentId, 'P');
 assert.equal(taskSummary(st[0]).parentId, null);
 
+// ── Kommentare (Second Brain #10) ─────────────────────────────────────────
+const kT1 = new Date('2026-10-31T09:00:00.000Z');
+const kTask = task({ id: 'K', number: 50, title: 'Landing page' });
+const kFirst = commentPatch(kTask, { id: 'sb-1', text: '  Erste Notiz ', author: 'Second Brain' }, kT1);
+assert.equal(kFirst.neu, true);
+assert.deepEqual(kFirst.patch.comments, [{ id: 'sb-1', text: 'Erste Notiz', author: 'Second Brain', createdAt: kT1.toISOString() }], 'angehängt, Text getrimmt');
+const kWith = task({ ...kTask, comments: [{ id: 'cmt-a', text: 'aus der App', author: 'Alex', createdAt: '2026-10-01T00:00:00.000Z' }, ...kFirst.patch.comments] });
+const kEdited = commentPatch(kWith, { id: 'sb-1', text: 'Geändert', author: 'Second Brain' }, new Date('2026-11-07T09:00:00.000Z'));
+assert.equal(kEdited.neu, false);
+assert.equal(kEdited.patch.comments.length, 2, 'gleiche id ersetzt, hängt nicht an');
+assert.deepEqual(kEdited.patch.comments[1], { id: 'sb-1', text: 'Geändert', author: 'Second Brain', createdAt: kT1.toISOString() }, 'Erstelldatum bleibt');
+assert.equal(kEdited.patch.comments[0].text, 'aus der App', 'andere Kommentare unverändert');
+assert.match(commentPatch(kTask, { text: 'ohne id', author: 'x' }).comment.id, /^cmt-/, 'ohne id: neue id wie in der App');
+assert.throws(() => commentPatch(kTask, { text: '   ', author: 'x' }), /nicht leer/);
+assert.deepEqual(removeCommentPatch(kWith, 'sb-1').comments.map((c) => c.id), ['cmt-a']);
+assert.throws(() => removeCommentPatch(kTask, 'sb-1'), /nicht gefunden/);
+
 console.log('mcp.test.ts: alle Prüfungen bestanden ✔');
+
+// ── Details für Second Brain „Heute“ ─────────────────────────────────────
+{
+  const parent = task({ id: 'd1', number: 50, title: 'Benny Info Business', description: 'Worum es geht', createdAt: '2026-10-01T08:00:00.000Z',
+    comments: [{ id: 'c1', text: 'alt', author: 'Alex', createdAt: '2026-10-02T08:00:00.000Z' }, { id: 'c2', text: 'neu', author: 'Alex', createdAt: '2026-10-05T08:00:00.000Z' }] });
+  const subs = [task({ id: 'd2', number: 51, title: 'Zweiter', parentId: 'd1', sortOrder: 2 }), task({ id: 'd3', number: 52, title: 'Erster', parentId: 'd1', sortOrder: 1 }),
+    task({ id: 'd4', number: 53, title: 'Erledigt', parentId: 'd1', completed: true })];
+  const d = taskDetail(parent, [parent, ...subs], 'Business', 'http://x');
+  assert.equal(d.description, 'Worum es geht');
+  assert.equal(d.createdAt, '2026-10-01T08:00:00.000Z');
+  assert.deepEqual(d.comments.map((c) => c.text), ['neu', 'alt'], 'neueste zuerst');
+  assert.deepEqual((d.subtasks as { number: number }[]).map((s) => s.number), [52, 51], 'nur offene, App-Reihenfolge');
+  assert.deepEqual(taskDetail(subs[0], [parent, ...subs]).subtasks, [], 'Subtask hat keine Subtasks');
+}

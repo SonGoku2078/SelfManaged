@@ -399,3 +399,56 @@ export function taskSummary(t: ApiTask, projectName?: string | null, baseUrl?: s
     waiting: !!t.waiting,
   };
 }
+
+// ── Kommentare (Second Brain #10) ───────────────────────────────────────────
+// Kommentare liegen als Liste am Task (wie in der App: id, text, author,
+// createdAt) und werden mit dem Task gespeichert. Gleiche id = Text ersetzen,
+// Erstelldatum bleibt — so kann ein Aufrufer (Second Brain) gefahrlos erneut senden.
+export interface ApiComment {
+  id: string;
+  text: string;
+  author: string;
+  createdAt: string;
+}
+
+export const newCommentId = (now = Date.now(), rnd = Math.random()): string =>
+  `cmt-${now.toString(36)}-${Math.floor(rnd * 1e6).toString(36)}`;
+
+const commentsOf = (t: ApiTask): ApiComment[] => (Array.isArray(t.comments) ? (t.comments as ApiComment[]) : []);
+
+export function commentPatch(
+  t: ApiTask,
+  input: { id?: string; text: string; author: string },
+  now = new Date(),
+): { patch: { comments: ApiComment[] }; comment: ApiComment; neu: boolean } {
+  const text = input.text.trim();
+  if (!text) throw new LogicError('Der Kommentar darf nicht leer sein.');
+  const list = commentsOf(t);
+  const id = input.id?.trim() || newCommentId(now.getTime());
+  const old = list.find((c) => c.id === id);
+  const comment = old ? { ...old, text } : { id, text, author: input.author, createdAt: now.toISOString() };
+  const comments = old ? list.map((c) => (c.id === id ? comment : c)) : [...list, comment];
+  return { patch: { comments }, comment, neu: !old };
+}
+
+export function removeCommentPatch(t: ApiTask, id: string): { comments: ApiComment[] } {
+  const list = commentsOf(t);
+  if (!list.some((c) => c.id === id)) throw new LogicError(`Kommentar „${id}" an #${t.number} nicht gefunden.`);
+  return { comments: list.filter((c) => c.id !== id) };
+}
+
+// ── Details für Second Brain „Heute“ ─────────────────────────────────────────
+// Beschreibung, Erfasst-Zeitpunkt, Kommentare (neueste zuerst) und offene Subtasks
+// (eine Ebene, in App-Reihenfolge) — Second Brain zeigt sie unter dem Task in der Daily Note.
+export function taskDetail(t: ApiTask, tasks: ApiTask[], projectName?: string | null, baseUrl?: string): ReturnType<typeof taskSummary> & {
+  description: string; createdAt: string; comments: ApiComment[]; subtasks: unknown[];
+} {
+  const one = (x: ApiTask) => ({
+    ...taskSummary(x, projectName, baseUrl),
+    description: x.description ?? '',
+    createdAt: x.createdAt,
+    comments: [...commentsOf(x)].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+  });
+  const subs = t.parentId ? [] : tasks.filter((s) => s.parentId === t.id && !s.completed).sort(byAppOrder);
+  return { ...one(t), subtasks: subs.map((s) => ({ ...one(s), subtasks: [] })) };
+}
