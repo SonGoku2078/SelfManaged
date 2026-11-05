@@ -37,7 +37,8 @@ assert.ok(np.completed === false && np.dueDate?.toISOString() === d('2026-07-07'
 assert.deepStrictEqual(subs.map((s) => s.title), ['Aufwärmen', 'Übung A', 'Dehnen'], 'entry order preserved');
 assert.deepStrictEqual(subs.map((s) => s.number), [101, 102, 103], 'numbered after the parent');
 assert.ok(subs.every((s) => s.id.startsWith('new-') && s.id !== np.id), 'fresh unique ids');
-assert.ok(np.comments?.length === 0, 'parent history (comments) not duplicated');
+assert.deepStrictEqual(np.comments?.map((c) => c.text), ['note'], 'comments carried over like in Nozbe');
+assert.ok(np.comments !== parent.comments, 'comments copied, not shared by reference');
 assert.ok(np.thisWeek === false && np.todayDate === null, 'week/day commitments not inherited (#18)');
 
 console.log(`✅ PASS — next occurrence "${np.title}" (due ${np.dueDate?.toDateString()}) keeps ${subs.length} subtasks:`);

@@ -2,7 +2,9 @@ import type { Task } from './types';
 
 // Build the next occurrence of a recurring task (`before`, now due `nextDue`),
 // carrying its subtasks over FRESH — reparented to the new occurrence, reset to
-// "to do", renumbered after the parent, with comments/attachments cleared.
+// "to do", renumbered after the parent. Comments/attachments travel along: in
+// Nozbe a recurring task is one task whose notes persist across occurrences —
+// clearing them hid e.g. an imported URL in the completed predecessor.
 // Pure (ids come from `makeId`) so it can be unit-tested without the store.
 // This is the fix for #20: completing a recurring task must not drop subtasks.
 export function buildOccurrence(
@@ -27,8 +29,8 @@ export function buildOccurrence(
     todayDate: null,
     createdAt: now,
     updatedAt: now,
-    comments: [],
-    attachments: [],
+    comments: [...(before.comments ?? [])],
+    attachments: [...(before.attachments ?? [])],
   };
   const subs = [...subtasks]
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || +a.createdAt - +b.createdAt)
@@ -41,8 +43,8 @@ export function buildOccurrence(
       completedAt: null,
       createdAt: now,
       updatedAt: now,
-      comments: [],
-      attachments: [],
+      comments: [...(s.comments ?? [])],
+      attachments: [...(s.attachments ?? [])],
     }));
   return { parent, subs };
 }
