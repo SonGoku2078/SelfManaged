@@ -1,6 +1,6 @@
 // Dünner HTTP-Client auf die bestehende REST-API von SelfManaged (#88).
-// Seit #100: volles Task-CRUD (deleteTask) — Projekte/Kategorien bleiben
-// weiterhin nur lesbar, kein neuer Schreib-Pfad dafür.
+// Seit #100: volles Task-CRUD (deleteTask). Projekte: nur Anlegen
+// (createProject, für Second Brain) — Kategorien bleiben nur lesbar.
 //
 // Zwei Backends je Umgebungsvariable (Nachtrag 2026-09-26 zu #96/#98):
 // Dev/Express (TM_API_URL) unveraendert seit #88, Prod/Appwrite
@@ -17,6 +17,7 @@ export interface TaskApi {
   health(): Promise<{ ok: boolean }>;
   getTasks(): Promise<ApiTask[]>;
   getProjects(): Promise<ApiProject[]>;
+  createProject(project: Record<string, unknown>): Promise<ApiProject>;
   getCategories(): Promise<ApiCategory[]>;
   createTask(task: Record<string, unknown>): Promise<ApiTask>;
   patchTask(id: string, patch: Record<string, unknown>): Promise<ApiTask>;
@@ -50,6 +51,7 @@ export class TaskManagerApi implements TaskApi {
   health() { return this.request<{ ok: boolean }>('GET', '/health'); }
   getTasks() { return this.request<ApiTask[]>('GET', '/api/tasks'); }
   getProjects() { return this.request<ApiProject[]>('GET', '/api/projects'); }
+  createProject(project: Record<string, unknown>) { return this.request<ApiProject>('POST', '/api/projects', project); }
   getCategories() { return this.request<ApiCategory[]>('GET', '/api/categories'); }
   createTask(task: Record<string, unknown>) { return this.request<ApiTask>('POST', '/api/tasks', task); }
   patchTask(id: string, patch: Record<string, unknown>) {
@@ -79,6 +81,7 @@ export class AppwriteTaskManagerApi implements TaskApi {
   health() { return this.request<{ ok: boolean }>('GET', '/health'); }
   getTasks() { return this.request<ApiTask[]>('GET', '/api/tasks'); }
   getProjects() { return this.request<ApiProject[]>('GET', '/api/projects'); }
+  createProject(project: Record<string, unknown>) { return this.request<ApiProject>('POST', '/api/projects', project); }
   getCategories() { return this.request<ApiCategory[]>('GET', '/api/categories'); }
   createTask(task: Record<string, unknown>) { return this.request<ApiTask>('POST', '/api/tasks', task); }
   patchTask(id: string, patch: Record<string, unknown>) {

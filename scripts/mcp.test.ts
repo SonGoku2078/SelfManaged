@@ -4,9 +4,9 @@
 // Run: npx tsx scripts/mcp.test.ts
 import assert from 'node:assert';
 import {
-  assertSubtaskParent, buildNewTask, commentPatch, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
+  assertSubtaskParent, buildNewProject, buildNewTask, commentPatch, completePatch, dateKey, dateKeyToIso, editPatch, envKind, findTask, formatTaskLine,
   groupDayPlan, inboxTasks, LogicError, nextSteps, nextTaskNumber, newTaskId, planNewTask, planPatch,
-  removeCommentPatch, resolveCategories, resolveProject, searchTasks, taskDetail, tasksOfProject, taskSummary, taskUrl, unplanPatch,
+  newProjectId, removeCommentPatch, resolveCategories, resolveProject, searchTasks, taskDetail, tasksOfProject, taskSummary, taskUrl, unplanPatch,
   type ApiProject, type ApiTask,
 } from '../apps/mcp/src/logic';
 
@@ -199,7 +199,6 @@ assert.throws(() => commentPatch(kTask, { text: '   ', author: 'x' }), /nicht le
 assert.deepEqual(removeCommentPatch(kWith, 'sb-1').comments.map((c) => c.id), ['cmt-a']);
 assert.throws(() => removeCommentPatch(kTask, 'sb-1'), /nicht gefunden/);
 
-console.log('mcp.test.ts: alle Prüfungen bestanden ✔');
 
 // ── Details für Second Brain „Heute“ ─────────────────────────────────────
 {
@@ -227,3 +226,27 @@ console.log('mcp.test.ts: alle Prüfungen bestanden ✔');
   assert.deepEqual(taskDetail(findTask(all, { number: 2354 }), all).subtasks, [], 'Subtask hat subtasks: []');
   assert.throws(() => findTask(all, { number: 9999 }), /#9999 nicht gefunden/, 'unbekannte Nummer');
 }
+
+// ── projekt_anlegen: aktiv/Someday, Area, Duplikat (Second Brain) ─────────
+{
+  const ps: ApiProject[] = [...projects.slice(0, 3).map((p, i) => ({ ...p, sortOrder: i })), { ...projects[3], sortOrder: -4 }];
+  const p = buildNewProject({ name: '  Neues Repo ', aktiv: true, beschreibung: ' README im Repo ' }, { projects: ps, id: 'proj-fix' });
+  assert.deepEqual(p, {
+    id: 'proj-fix', name: 'Neues Repo', color: '#e91e63', icon: '📁', pinned: false, active: true, kind: 'project',
+    description: 'README im Repo', sortOrder: -5, parentAreaId: null, archived: false,
+  }, 'aktives Projekt: Felder wie store.addProject, oben einsortiert');
+  const s = buildNewProject({ name: 'Irgendwann', aktiv: false }, { projects: ps });
+  assert.equal(s.active, false, 'Someday = active false');
+  assert.equal('description' in s, false, 'ohne Beschreibung kein description-Feld');
+  assert.match(String(s.id), /^proj-[0-9a-z]+-[0-9a-z]+$/, 'id im Store-Format');
+  assert.match(newProjectId(1_000_000, 0.5), /^proj-/);
+  const a = buildNewProject({ name: 'Gesundheit', aktiv: true, art: 'area' }, { projects: [] });
+  assert.equal(a.kind, 'area');
+  assert.equal(a.icon, '🔁');
+  assert.equal(a.sortOrder, -1, 'leere Liste → -1');
+  assert.throws(() => buildNewProject({ name: 'website relaunch', aktiv: true }, { projects: ps }), /gibt es bereits/, 'Duplikat (case-insensitiv)');
+  assert.equal(buildNewProject({ name: 'Altes Projekt', aktiv: true }, { projects: ps }).name, 'Altes Projekt', 'archiviertes zählt nicht als Duplikat');
+  assert.throws(() => buildNewProject({ name: '   ', aktiv: true }, { projects: ps }), /leer/);
+}
+
+console.log('mcp.test.ts: alle Prüfungen bestanden ✔');
