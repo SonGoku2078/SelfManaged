@@ -215,6 +215,26 @@ export function registerTools(server: McpServer, api: TaskApi): void {
     }),
   );
 
+  // Ein Task nach Nummer/id, auch erledigt und auch aus der Inbox (Second Brain „{{“-Einfügen).
+  server.registerTool(
+    'task_holen',
+    {
+      title: 'Task holen',
+      description: 'Einen einzelnen Task per taskId oder taskNummer holen, auch erledigte und Inbox-Tasks. mitDetails=true liefert zusätzlich Beschreibung, Erfasst-Zeitpunkt, Kommentare (neueste zuerst) und alle offenen Subtasks (wie tagesplan).',
+      inputSchema: { ...TASK_REF, mitDetails: z.boolean().optional().describe('Beschreibung, Kommentare und offene Subtasks mitliefern (für Second Brain)') },
+    },
+    guard(async ({ taskId, taskNummer, mitDetails }) => {
+      const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
+      const t = findTask(tasks, { id: taskId, number: taskNummer });
+      const line = formatTaskLine(t, projectName(projects, t.projectId), dateKey(new Date()), api.baseUrl);
+      if (!mitDetails) return ok(line, { task: summaries([t], projects)[0] });
+      const d = details([t], tasks, projects)[0];
+      const extra = [d.description ? `Beschreibung: ${d.description}` : null, `${d.comments.length} Kommentare, ${d.subtasks.length} offene Subtasks`]
+        .filter(Boolean).join('\n');
+      return ok(`${line}\n${extra}`, { task: d });
+    }),
+  );
+
   server.registerTool(
     'inbox',
     {
