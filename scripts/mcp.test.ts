@@ -214,3 +214,16 @@ console.log('mcp.test.ts: alle Prüfungen bestanden ✔');
   assert.deepEqual((d.subtasks as { number: number }[]).map((s) => s.number), [52, 51], 'nur offene, App-Reihenfolge');
   assert.deepEqual(taskDetail(subs[0], [parent, ...subs]).subtasks, [], 'Subtask hat keine Subtasks');
 }
+
+// ── task_holen: Inbox-Task nach Nummer mit Details (Second Brain „{{“) ─────
+{
+  const inboxParent = task({ id: 'h1', number: 2333, title: 'Beni info business', projectId: null });
+  const hs = [task({ id: 'h2', number: 2354, title: 'Offen A', parentId: 'h1', sortOrder: 1 }), task({ id: 'h3', number: 2355, title: 'Offen B', parentId: 'h1', sortOrder: 2 }),
+    task({ id: 'h4', number: 2356, title: 'Erledigt', parentId: 'h1', completed: true }), task({ id: 'h5', number: 2400, title: 'Fertig', completed: true })];
+  const all = [inboxParent, ...hs];
+  const got = findTask(all, { number: 2333 });
+  assert.deepEqual((taskDetail(got, all).subtasks as { number: number }[]).map((s) => s.number), [2354, 2355], 'Inbox-Task: genau die offenen Subtasks');
+  assert.equal(findTask(all, { number: 2400 }).completed, true, 'erledigter Task wird gefunden');
+  assert.deepEqual(taskDetail(findTask(all, { number: 2354 }), all).subtasks, [], 'Subtask hat subtasks: []');
+  assert.throws(() => findTask(all, { number: 9999 }), /#9999 nicht gefunden/, 'unbekannte Nummer');
+}
