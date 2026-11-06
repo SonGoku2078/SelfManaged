@@ -28,13 +28,11 @@ import {
 } from './dummyData';
 import type { ProjectTemplate } from './templates';
 import { pushNozbeCompleted, type MappedImport } from './nozbe';
-import {
-  tasksApi, projectsApi, categoriesApi, membersApi,
-  sectionsApi, blockersApi, savedViewsApi, activityLogApi, settingsApi,
-} from './api';
+import { tasksApi, activityLogApi } from './api';
 import { enqueue, flush as flushOutbox, pendingCount, writeSeq, onTaskRenumbered, hasPending } from './api/outbox';
 import { ORDER_STEP, edgeOrder, placeMoved, type Placement } from './taskOrder';
 import { saveSnapshot, loadSnapshot } from './api/cache';
+import { applySync, fetchSync, mergeActivity, type SyncResult } from './sync/delta';
 import { buildOccurrence, nextDueAfterCompletion } from './recurrence';
 import { safeNextNumber, duplicateNumberTasks } from './taskNumber';
 import { IS_EXTRA_WINDOW } from './windows';
@@ -485,7 +483,10 @@ interface AppState {
   // Merge a partial settings patch (Pomodoro, reminders, …) + sync it.
   patchSettings: (patch: Partial<Settings>) => void;
 
-  loadAll: () => Promise<void>;
+  /** Push the outbox, then pull changes since the last sync (full: everything). */
+  loadAll: (opts?: { full?: boolean }) => Promise<void>;
+  /** Newest activity-log entries from the server (only when the log is shown). */
+  loadActivityLog: () => Promise<void>;
 
   // Task CRUD
   addTask: (input: NewTaskInput) => Task;
@@ -655,6 +656,29 @@ export const DEFAULT_NAV_ORDER: ViewType[] = [
 // it is still in flight. A second run would fetch server state from BEFORE the
 // outbox flush and clobber newer optimistic edits.
 let loadAllInFlight: Promise<void> | null = null;
+// Incremental sync (Appwrite usage, 2026-11): serverTime of the last applied
+// sync. Kept with the offline snapshot, so a restart only fetches changes.
+let syncCursor: string | null = null;
+let lastFullSyncAt = 0;
+// Safety net for deletions without a tombstone (e.g. rows removed in the
+// Appwrite console): a full load at most this often, plus "Jetzt
+// synchronisieren" in the settings.
+const FULL_SYNC_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const ACTIVITY_LOAD = 200;
+
+// Offline snapshot of the current state + sync cursor (see api/cache.ts).
+function persistSnapshot(): void {
+  const s = useStore.getState();
+  saveSnapshot({
+    tasks: s.tasks, projects: s.projects, sections: s.sections, blockers: s.blockers, categories: s.categories,
+    savedViews: s.savedViews, activityLog: s.activityLog, members: s.members, settings: s.settings,
+    nextTaskNumber: s.nextTaskNumber, syncCursor, fullSyncAt: lastFullSyncAt,
+  });
+}
+
+const isEmptyDelta = (r: SyncResult) =>
+  !r.full && !Object.keys(r.settings).length && !Object.keys(r.deleted).length &&
+  (['tasks', 'projects', 'sections', 'blockers', 'categories', 'savedViews', 'members'] as const).every((k) => !r[k]?.length);
 // Duplicate task numbers are repaired at most once per session (see loadAll).
 let renumberRequested = false;
 
@@ -850,8 +874,9 @@ export const useStore = create<AppState>()((set, get) => ({
     enqueue('settings.patch', { patch });
   },
 
-  loadAll: () => {
+  loadAll: (opts) => {
     if (loadAllInFlight) return loadAllInFlight;
+    const wantFull = opts?.full === true;
     loadAllInFlight = (async () => {
     // SQLite is the single source of truth. We NEVER fall back to the legacy
     // `nozbe-clone-state` localStorage snapshot — doing so resurrected stale
@@ -871,6 +896,9 @@ export const useStore = create<AppState>()((set, get) => ({
           settings: { ...defaultSettings, ...(snap.settings ?? {}) },
           nextTaskNumber: safeNextNumber(snap.nextTaskNumber, snap.tasks),
         });
+        // The cursor belongs to exactly this data: a delta from it is complete.
+        syncCursor = snap.syncCursor ?? null;
+        lastFullSyncAt = snap.fullSyncAt ?? 0;
       }
     }
 
@@ -886,45 +914,43 @@ export const useStore = create<AppState>()((set, get) => ({
     if (pendingCount() > 0) return;
 
     try {
-      const [tasks, projects, sections, blockers, categories, savedViews, activityLog, members, settingsData] = await Promise.all([
-        tasksApi.getAll(),
-        projectsApi.getAll(),
-        sectionsApi.getAll(),
-        blockersApi.getAll(),
-        categoriesApi.getAll(),
-        savedViewsApi.getAll(),
-        activityLogApi.getAll(),
-        membersApi.getAll(),
-        settingsApi.getAll(),
-      ]);
-      const { nextTaskNumber, ...rawSettings } = settingsData;
-      const settings = { ...defaultSettings, ...rawSettings };
-      // Defensive: ensure numeric settings are numbers (a stale string value
-      // would break numeric math, e.g. WeekView hour labels / zoom).
-      for (const k of ['calendarStartHour', 'calendarEndHour', 'calendarMonthCount', 'calendarHourHeight', 'projectsPanelWidth', 'detailPanelWidth'] as const) {
-        const v = (settings as Record<string, unknown>)[k];
-        if (typeof v === 'string' && v.trim() !== '') (settings as Record<string, unknown>)[k] = Number(v);
-      }
-      const safeMembers = members.length ? members : [SELF_MEMBER];
+      const full = wantFull || !syncCursor || Date.now() - lastFullSyncAt > FULL_SYNC_MAX_AGE_MS;
+      const result = await fetchSync(full ? null : syncCursor);
 
       // Local edits the server has not confirmed yet (still queued, or made
       // while this fetch was running) are missing from the fetched data.
       // Applying it would make e.g. a just-added task vanish until a later
-      // pull — so keep the local state; the next pull after the outbox has
-      // drained brings in remote changes.
+      // pull — so keep the local state AND the old cursor: the next pull
+      // after the outbox has drained asks again from there.
       if (pendingCount() > 0 || writeSeq() !== seqBefore) {
         set({ dataLoaded: true });
         return;
       }
 
+      if (isEmptyDelta(result)) {
+        syncCursor = result.serverTime;
+        set({ dataLoaded: true });
+        persistSnapshot();
+        return;
+      }
+
+      const state = get();
+      const next = applySync(state, result, defaultSettings);
+      const members = next.members.length ? next.members : [SELF_MEMBER];
       // Trust the server completely — an empty DB is legitimately empty.
-      const nextNumber = safeNextNumber(nextTaskNumber, tasks);
-      set({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextNumber, dataLoaded: true });
+      const nextTaskNumber = safeNextNumber(next.nextTaskNumber ?? state.nextTaskNumber, next.tasks);
+      set({
+        tasks: next.tasks, projects: next.projects, sections: next.sections, blockers: next.blockers,
+        categories: next.categories, savedViews: next.savedViews, members, settings: next.settings,
+        nextTaskNumber, dataLoaded: true,
+      });
+      syncCursor = result.serverTime;
+      if (result.full) lastFullSyncAt = Date.now();
       // Refresh the offline display cache with server truth.
-      saveSnapshot({ tasks, projects, sections, blockers, categories, savedViews, activityLog, members: safeMembers, settings, nextTaskNumber: nextNumber });
+      persistSnapshot();
       // Old duplicate numbers (two tasks #1775): the server repairs them all in
       // one call, then we pull again. Once per session — never a retry loop.
-      if (!IS_EXTRA_WINDOW && !renumberRequested && duplicateNumberTasks(tasks).length) {
+      if (!IS_EXTRA_WINDOW && !renumberRequested && duplicateNumberTasks(next.tasks).length) {
         renumberRequested = true;
         void tasksApi.renumberDuplicates()
           .then((r) => { if (r?.renumbered) void get().loadAll(); })
@@ -939,6 +965,15 @@ export const useStore = create<AppState>()((set, get) => ({
     }
     })().finally(() => { loadAllInFlight = null; });
     return loadAllInFlight;
+  },
+
+  loadActivityLog: async () => {
+    try {
+      const server = await activityLogApi.getAll(ACTIVITY_LOAD);
+      set((state) => ({ activityLog: mergeActivity(state.activityLog, server, ACTIVITY_CAP) }));
+    } catch (e) {
+      console.warn('Activity log not loaded (offline?)', e);
+    }
   },
 
   addTask: (input) => {
@@ -2353,12 +2388,6 @@ let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 useStore.subscribe((state) => {
   if (!state.dataLoaded && state.tasks.length === 0) return; // nothing meaningful yet
   if (snapshotTimer) clearTimeout(snapshotTimer);
-  snapshotTimer = setTimeout(() => {
-    saveSnapshot({
-      tasks: state.tasks, projects: state.projects, sections: state.sections,
-      blockers: state.blockers, categories: state.categories, savedViews: state.savedViews,
-      activityLog: state.activityLog, members: state.members, settings: state.settings,
-      nextTaskNumber: state.nextTaskNumber,
-    });
-  }, 800);
+  // Reads state and sync cursor when it fires, so both always belong together.
+  snapshotTimer = setTimeout(persistSnapshot, 800);
 });

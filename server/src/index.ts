@@ -87,6 +87,11 @@ app.post('/api/migrate', async (req, res) => {
   }
 });
 
+// Unknown API routes: a JSON 404, not the SPA's index.html with 200. Clients
+// detect optional endpoints this way (GET /api/sync exists only on the
+// Appwrite function; app and MCP fall back to the per-table GETs here).
+app.use('/api', (_req, res) => { res.status(404).json({ error: 'Not found' }); });
+
 // Serve compiled frontend in production (vite build --outDir ../public).
 const publicDir = path.join(__dirname, '..', 'public');
 app.use(express.static(publicDir));

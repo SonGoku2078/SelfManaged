@@ -23,7 +23,8 @@ export const savedViewsApi = {
 };
 
 export const activityLogApi = {
-  getAll:  ()                  => apiFetch<ActivityEntry[]>('/api/activity-log'),
+  // Newest first; the server caps at 500 (Appwrite bills every returned row).
+  getAll:  (limit?: number)    => apiFetch<ActivityEntry[]>(`/api/activity-log${limit ? `?limit=${limit}` : ''}`),
   append:  (e: ActivityEntry)  => apiFetch<void>('/api/activity-log', { method: 'POST', body: JSON.stringify(e) }),
 };
 

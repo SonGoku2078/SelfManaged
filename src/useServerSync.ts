@@ -1,22 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { flush as flushOutbox, pendingCount } from './api/outbox';
+import { flush as flushOutbox, pendingCount, onChange as onOutboxChange } from './api/outbox';
 import { apiFetch } from './api/client';
 import { IS_APPWRITE_PROD } from './appwrite/client';
 import { useStore } from './store';
 import { onRemoteChange } from './windowSync';
+import {
+  backgroundPullDue, returnPullDue, EXPRESS_HEALTH_MS, OFFLINE_PROBE_MS, OUTBOX_RETRY_MS, TICK_MS,
+} from './sync/cadence';
 
-// Wie oft im Hintergrund frische Daten geholt werden, wenn das Fenster offen
-// liegen bleibt. Fokuswechsel laedt unabhaengig davon sofort (#86).
-const BACKGROUND_MS = 60_000;
-// Gesundheitspruefung des Servers (Online/Offline-Hinweis). Auf Appwrite kostet
-// jeder Check eine Function-Ausfuehrung, daher seltener.
-const HEALTH_MS = IS_APPWRITE_PROD ? 30_000 : 15_000;
 // Erst nach so vielen Fehlschlaegen in Folge gilt der Server als offline — ein
-// einzelner langsamer Check (Cold Start, WLAN-Schluckauf) blendet nichts ein.
+// einzelner langsamer Abruf (Cold Start, WLAN-Schluckauf) blendet nichts ein.
 const OFFLINE_AFTER_FAILS = 2;
-// Fokus/Sichtbarkeit loest hoechstens so oft einen Pull aus — Fensterwechsel
-// passieren staendig, jeder Pull sind 9 API-Calls (#108).
-const FOCUS_PULL_MIN_MS = 30_000;
 // Aenderung aus einem anderen Fenster: kurz sammeln, dann einmal nachladen.
 const REMOTE_DEBOUNCE_MS = 1500;
 const REMOTE_RETRY_MS = 3000;
@@ -40,29 +34,43 @@ function isEditing(): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 
-// Server-Sync fuer Desktop/Web (#86). Ersetzt die alte Schleife, die nach dem
-// ersten loadAll nie wieder gepullt hat — dadurch blieben Aenderungen von
-// anderen Geraeten unsichtbar bis zum Neustart.
+const isVisible = () => document.visibilityState === 'visible';
+
+// Server-Sync fuer Desktop, Web und Handy (#86, Appwrite-Verbrauch 2026-11).
+// Ein Pull ist ein Delta (nur Geaendertes, siehe src/sync/delta.ts); wann
+// gepullt wird, steht in src/sync/cadence.ts.
 export function useServerSync(): ServerSync {
   const loadAll = useStore((s) => s.loadAll);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
   // Verhindert ueberlappende Ladevorgaenge (Button-Klick waehrend Auto-Load).
   const loading = useRef(false);
+  const lastPullAt = useRef(0);
+  const fails = useRef(0);
+
+  const markOnline = useCallback(() => { fails.current = 0; setServerOnline(true); }, []);
+  const markFailed = useCallback(() => {
+    fails.current++;
+    if (fails.current >= OFFLINE_AFTER_FAILS) setServerOnline(false);
+  }, []);
 
   // loadAll() flusht zuerst die Outbox (Push vor Pull), gespeicherte lokale
   // Aenderungen gehen also nie verloren (AC5). Gibt zurueck, ob geladen wurde.
   const pull = useCallback(async (): Promise<boolean> => {
     if (loading.current) return false;
     loading.current = true;
+    lastPullAt.current = Date.now();
     try {
       await loadAll();
+      const { dataLoaded } = useStore.getState();
+      // dataLoaded=false nach loadAll(): Server nicht erreicht.
+      if (dataLoaded) markOnline(); else markFailed();
       // Erfolg heisst: Server erreicht UND alles Lokale ist oben angekommen.
-      return useStore.getState().dataLoaded && pendingCount() === 0;
+      return dataLoaded && pendingCount() === 0;
     } finally {
       loading.current = false;
     }
-  }, [loadAll]);
+  }, [loadAll, markOnline, markFailed]);
 
   const refresh = useCallback(async () => {
     setRefreshState('refreshing');
@@ -71,76 +79,84 @@ export function useServerSync(): ServerSync {
     window.setTimeout(() => setRefreshState('idle'), ok ? 1500 : 4000);
   }, [pull]);
 
-  // --- Health-Poll + erster Load ---
-  // Geprueft wird die API selbst (ueber apiFetch, also auf PROD durch die
-  // Appwrite-Function). Frueher ging fetch('/health') an die statische Site,
-  // die immer 200 liefert — sagte also nichts ueber die API aus und meldete bei
-  // jedem langsamen Seitenabruf (>3 s) faelschlich "Server nicht erreichbar".
+  // --- Erster Load + Erreichbarkeit ---
+  // Appwrite: kein Health-Takt, solange der Server erreichbar ist — jeder
+  // Pull beantwortet die Frage (und jeder /health-Aufruf war eine Function-
+  // Ausfuehrung). Nur offline wird geprobt; fehlgeschlagene Anfragen erreichen
+  // Appwrite nicht und kosten nichts. Express/LAN: Health wie bisher (gratis).
   useEffect(() => {
     let cancelled = false;
-    let fails = 0;
-    const online = () => {
-      fails = 0;
-      setServerOnline(true);
-      // Immer draenen, damit ein einmal fehlgeschlagener Schreibvorgang
-      // weiter versucht wird; der allererste Load passiert hier.
-      void flushOutbox();
-      if (!useStore.getState().dataLoaded) void pull();
-    };
-    const check = () => {
+    let probing = false;
+    const probe = () => {
+      if (probing) return;
+      probing = true;
       apiFetch('/health', { signal: AbortSignal.timeout(8000) })
         .then(() => {
-          if (!cancelled) online();
+          if (cancelled) return;
+          const wasOffline = fails.current >= OFFLINE_AFTER_FAILS || !useStore.getState().dataLoaded;
+          markOnline();
+          // Zurueck online (oder noch nie geladen): einmal Outbox + Delta.
+          if (wasOffline) void pull();
         })
         .catch((e) => {
           if (cancelled) return;
           // Eine HTTP-Antwort (z. B. 429 Rate-Limit, 401) heisst: Server
           // erreichbar. "Offline" nur ohne jede Antwort.
-          if (e instanceof Error && e.message.startsWith('API ')) {
-            fails = 0;
-            setServerOnline(true);
-            return;
-          }
-          fails++;
-          if (fails >= OFFLINE_AFTER_FAILS) setServerOnline(false);
-        });
+          if (e instanceof Error && e.message.startsWith('API ')) { markOnline(); return; }
+          markFailed();
+        })
+        .finally(() => { probing = false; });
     };
-    check();
-    const id = window.setInterval(check, HEALTH_MS);
-    const onOnline = () => { void flushOutbox(); void pull(); };
+    const tick = () => {
+      if (!IS_APPWRITE_PROD) { probe(); return; }
+      if (!useStore.getState().dataLoaded || fails.current > 0) probe();
+    };
+    // Erster Load (main.tsx hat ihn meist schon gestartet; loadAll buendelt).
+    void pull();
+    const id = window.setInterval(tick, IS_APPWRITE_PROD ? OFFLINE_PROBE_MS : EXPRESS_HEALTH_MS);
+    const onOnline = () => { void pull(); };
     window.addEventListener('online', onOnline);
     return () => {
       cancelled = true;
       window.clearInterval(id);
       window.removeEventListener('online', onOnline);
     };
-  }, [pull]);
+  }, [pull, markOnline, markFailed]);
 
-  // --- Hintergrund-Takt: frische Daten holen, wenn nicht getippt wird (AC3/AC4) ---
+  // --- Outbox: fehlgeschlagene Schreibvorgaenge erneut senden, nur solange welche warten ---
+  useEffect(() => {
+    let id: number | undefined;
+    const update = (n: number) => {
+      if (n > 0 && id === undefined) id = window.setInterval(() => { void flushOutbox(); }, OUTBOX_RETRY_MS);
+      if (n === 0 && id !== undefined) { window.clearInterval(id); id = undefined; }
+    };
+    update(pendingCount());
+    const off = onOutboxChange(update);
+    return () => { off(); if (id !== undefined) window.clearInterval(id); };
+  }, []);
+
+  // --- Hintergrund-Takt: nur sichtbar, fokussiert alle 5 min, sonst alle 15 min (AC3/AC4) ---
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return; // im Hintergrund unnoetig
-      if (isEditing()) return;                             // Eingabe nicht stoeren
-      if (!useStore.getState().dataLoaded) return;         // Health-Poll macht den ersten
-      void pull();
-    }, BACKGROUND_MS);
+      const due = backgroundPullDue({
+        now: Date.now(), lastPullAt: lastPullAt.current, visible: isVisible(),
+        focused: document.hasFocus(), editing: isEditing(), dataLoaded: useStore.getState().dataLoaded,
+      });
+      if (due) void pull();
+    }, TICK_MS);
     return () => window.clearInterval(id);
   }, [pull]);
 
-  // --- Fokus/Sichtbarkeit: sofort nachladen (AC2, der 'zurueck im Heimnetz'-Fall) ---
+  // --- Zurueck im Vordergrund: nachladen (AC2, der 'zurueck im Heimnetz'-Fall) ---
   useEffect(() => {
-    let lastFocusPull = 0;
-    const onFocus = () => {
-      if (document.visibilityState !== 'visible') return;
-      if (Date.now() - lastFocusPull < FOCUS_PULL_MIN_MS) return;
-      lastFocusPull = Date.now();
-      void pull();
+    const onReturn = () => {
+      if (returnPullDue({ now: Date.now(), lastPullAt: lastPullAt.current, visible: isVisible() })) void pull();
     };
-    document.addEventListener('visibilitychange', onFocus);
-    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
     return () => {
-      document.removeEventListener('visibilitychange', onFocus);
-      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
     };
   }, [pull]);
 

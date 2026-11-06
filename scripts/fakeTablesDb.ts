@@ -6,6 +6,22 @@
 type Row = Record<string, unknown> & { $id: string; $createdAt: string; $updatedAt: string };
 type Q = { method: string; attribute?: string; values?: unknown[] };
 
+function matches(r: Record<string, unknown>, q: Q): boolean {
+  const v = q.values ?? [];
+  const x = q.attribute === undefined ? undefined : r[q.attribute];
+  switch (q.method) {
+    case 'equal': return v.includes(x);
+    case 'greaterThan': return x != null && String(x) > String(v[0]);
+    case 'lessThan': return x != null && String(x) < String(v[0]);
+    case 'between': return x != null && String(x) >= String(v[0]) && String(x) <= String(v[1]);
+    case 'isNotNull': return x != null;
+    case 'isNull': return x == null;
+    case 'or': return (v as Q[]).some((sub) => matches(r, sub));
+    case 'and': return (v as Q[]).every((sub) => matches(r, sub));
+    default: return true; // limit, cursor, order, select
+  }
+}
+
 export class FakeTablesDb {
   tables = new Map<string, Map<string, Row>>();
   reads = 0;
@@ -43,14 +59,7 @@ export class FakeTablesDb {
     this.listCalls++;
     const qs = queries.map((q) => JSON.parse(q) as Q);
     let rows = [...this.table(tableId).values()];
-    for (const q of qs) {
-      const a = q.attribute!;
-      const v = q.values ?? [];
-      if (q.method === 'equal') rows = rows.filter((r) => v.includes(r[a]));
-      if (q.method === 'greaterThan') rows = rows.filter((r) => String(r[a]) > String(v[0]));
-      if (q.method === 'lessThan') rows = rows.filter((r) => String(r[a]) < String(v[0]));
-      if (q.method === 'isNotNull') rows = rows.filter((r) => r[a] != null);
-    }
+    for (const q of qs) rows = rows.filter((r) => matches(r, q));
     rows.sort((x, y) => x.$id.localeCompare(y.$id));
     for (const q of qs) {
       const a = q.attribute!;

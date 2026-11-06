@@ -867,7 +867,7 @@ function ProdImportSection() {
       const r = await fetch('/api/admin/import-prod', { method: 'POST' });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`);
-      await useStore.getState().loadAll();
+      await useStore.getState().loadAll({ full: true });
       setMsg(`✓ Import erfolgreich: ${d.counts.tasks} Aufgaben, ${d.counts.projects} Projekte, ${d.counts.categories} Kategorien, ${d.counts.activity_log} Aktivitäten.`);
     } catch (e) {
       setMsg(`✕ Fehler: ${e instanceof Error ? e.message : e}`);
