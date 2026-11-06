@@ -129,7 +129,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
   const syncNow = async () => {
     setBusy(true);
-    try { await flushOutbox(); await loadAll(); } finally { setBusy(false); }
+    // Manual sync = full load: also catches deletions without a tombstone.
+    try { await flushOutbox(); await loadAll({ full: true }); } finally { setBusy(false); }
   };
 
   // ICS calendar feed URL (issue #24) — token-secured, for subscribing from an

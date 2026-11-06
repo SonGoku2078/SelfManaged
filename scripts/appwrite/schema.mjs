@@ -42,6 +42,10 @@ export const TABLES = [
   { id: 'saved_views', name: 'Saved views', columns: [v('legacyId', 255, true), v('name', 500, true), longtext('filtersJson', true, '{}'), v('sortField', 32, true, 'manual'), v('sortDir', 8, true, 'asc'), v('searchQuery', 1000, true, ''), integer('sortOrder', true, 0)], indexes: [idx('saved_view_order', 'key', ['sortOrder'])] },
   { id: 'activity_log', name: 'Activity log', columns: [v('legacyId', 255, true), datetime('at', true), v('actor', 255, true, ''), v('kind', 64, true), v('taskId', 255), integer('taskNumber'), v('taskTitle', 1000, true, ''), v('field', 255), text('fromValue'), text('toValue'), longtext('payloadJson')], indexes: [idx('activity_at', 'key', ['at']), idx('activity_task', 'key', ['taskId'])] },
   { id: 'settings', name: 'Settings', columns: [v('key', 255, true), longtext('valueJson', true)], indexes: [idx('setting_key_unique', 'unique', ['key'])] },
+  // Tombstones for GET /api/sync (apps/functions/api/src/sync.js): one row per
+  // deleted row, so clients can sync incrementally instead of re-reading whole
+  // tables. Kept 30 days; the API function prunes older ones.
+  { id: 'deletions', name: 'Deletions (sync tombstones)', columns: [v('tableId', 64, true), v('legacyId', 255, true)], indexes: [] },
   { id: 'task_attachments', name: 'Task attachments', columns: [v('legacyId', 255, true), v('taskId', 255, true), v('fileId', 255, true), v('name', 1000, true), v('mimeType', 255, true), integer('size', true, 0, 0), datetime('createdAt', true)], indexes: [idx('attachment_task', 'key', ['taskId']), idx('attachment_file', 'unique', ['fileId'])] },
 ];
 

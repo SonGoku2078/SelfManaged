@@ -22,6 +22,10 @@ export interface Snapshot {
   members: Member[];
   settings: Settings;
   nextTaskNumber: number;
+  /** serverTime of the sync this data reflects (GET /api/sync); absent = full load next. */
+  syncCursor?: string | null;
+  /** When the last full load happened (ms). */
+  fullSyncAt?: number;
 }
 
 const DATE_KEYS = new Set([

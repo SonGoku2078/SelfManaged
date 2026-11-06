@@ -123,8 +123,9 @@ export async function appwriteApiFetch<T>(path: string, init?: AppwriteFetchInit
     throw new Error(`Appwrite-Function „${APPWRITE_FUNCTION_ID}" nicht erreichbar (${why}).`, { cause: e });
   }
   if (execution.responseStatusCode >= 400) {
-    throw new Error(
-      `Appwrite antwortete ${execution.responseStatusCode} auf ${method} ${path}: ${execution.responseBody || execution.errors || ''}`,
+    throw Object.assign(
+      new Error(`Appwrite antwortete ${execution.responseStatusCode} auf ${method} ${path}: ${execution.responseBody || execution.errors || ''}`),
+      { status: execution.responseStatusCode },
     );
   }
   if (execution.responseStatusCode === 204 || !execution.responseBody) return undefined as T;

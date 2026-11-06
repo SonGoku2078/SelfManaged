@@ -452,3 +452,32 @@ export function taskDetail(t: ApiTask, tasks: ApiTask[], projectName?: string | 
   const subs = t.parentId ? [] : tasks.filter((s) => s.parentId === t.id && !s.completed).sort(byAppOrder);
   return { ...one(t), subtasks: subs.map((s) => ({ ...one(s), subtasks: [] })) };
 }
+
+// ── Zustand mehrerer Tasks (tasks_zustand, für Second Brain) ───────────────
+
+/**
+ * Für jede Nummer: Zusammenfassung + übergeordneter Task + Zahl offener
+ * Subtasks (nur bei Tasks ohne übergeordneten Task). Nummern ohne Task landen
+ * in `fehlend`. Doppelte Nummern (Altlast vor #144): der zuerst angelegte.
+ */
+export function tasksState<S extends { number: number; title: string; completed: boolean }>(
+  tasks: ApiTask[],
+  numbers: number[],
+  summarize: (t: ApiTask) => S,
+): { tasks: Record<string, S & { parentNumber: number | null; parentTitle: string | null; openSubtasks: number | null }>; fehlend: number[] } {
+  const byNumber = new Map<number, ApiTask>();
+  for (const t of [...tasks].sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')))) {
+    if (!byNumber.has(t.number)) byNumber.set(t.number, t);
+  }
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const out: Record<string, S & { parentNumber: number | null; parentTitle: string | null; openSubtasks: number | null }> = {};
+  const fehlend: number[] = [];
+  for (const n of new Set(numbers)) {
+    const t = byNumber.get(n);
+    if (!t) { fehlend.push(n); continue; }
+    const parent = t.parentId ? byId.get(t.parentId) ?? null : null;
+    const openSubtasks = t.parentId ? null : tasks.filter((s) => s.parentId === t.id && !s.completed).length;
+    out[n] = { ...summarize(t), parentNumber: parent?.number ?? null, parentTitle: parent?.title ?? null, openSubtasks };
+  }
+  return { tasks: out, fehlend };
+}

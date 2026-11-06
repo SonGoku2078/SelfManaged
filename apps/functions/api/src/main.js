@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import { Client, Query, TablesDB } from 'node-appwrite';
+import { Client, ID, Query, TablesDB } from 'node-appwrite';
+import { hasTombstoneTable, pruneTombstones, syncChanges, tombstoneData, TOMBSTONE_TABLE } from './sync.js';
 
 const DATABASE_ID = 'selfmanaged-prod';
 const JSON_HEADERS = {
@@ -129,6 +130,7 @@ async function listAll(db, tableId, order = [], orderDesc = []) {
   return (await db.listRows({ databaseId: DATABASE_ID, tableId, queries, total: false })).rows;
 }
 
+const ACTIVITY_MAX = 500;
 const REORDER_MAX = 10000;
 const REORDER_CONCURRENCY = 16;
 // The function is killed after 30 s. A big renumber (700+ rows) used to run
@@ -166,19 +168,33 @@ async function forEachLimited(items, limit, fn, deadline = Infinity) {
 // (documented trade-off — the alternative was refusing the delete outright
 // for any project/task with >~99 descendants, which real PROD data exceeds).
 const DELETE_BATCH_SIZE = 90;
+// With tombstones every delete is two ops (delete + tombstone): 45 per batch.
+const DELETE_BATCH_SIZE_TOMBSTONES = 45;
+
+// Delete one row inside `transactionId` and, when the deletions table exists,
+// record its tombstone in the same transaction (see sync.js).
+async function deleteWithTombstone(db, tableId, row, transactionId, tombstones) {
+  await db.deleteRow({ databaseId: DATABASE_ID, tableId, rowId: row.$id, transactionId });
+  if (tombstones) {
+    await db.createRow({ databaseId: DATABASE_ID, tableId: TOMBSTONE_TABLE, rowId: ID.unique(), data: tombstoneData(tableId, row.legacyId ?? row.$id), transactionId });
+  }
+}
+
 async function deleteAllRows(db, tableId, matchQuery) {
+  const tombstones = await hasTombstoneTable(db, DATABASE_ID);
+  const batch = tombstones ? DELETE_BATCH_SIZE_TOMBSTONES : DELETE_BATCH_SIZE;
   for (;;) {
-    const page = await db.listRows({ databaseId: DATABASE_ID, tableId, queries: [matchQuery, Query.limit(DELETE_BATCH_SIZE)], total: false });
+    const page = await db.listRows({ databaseId: DATABASE_ID, tableId, queries: [matchQuery, Query.limit(batch)], total: false });
     if (!page.rows.length) return;
     const transaction = await db.createTransaction({ ttl: 60 });
     try {
-      for (const row of page.rows) await db.deleteRow({ databaseId: DATABASE_ID, tableId, rowId: row.$id, transactionId: transaction.$id });
+      for (const row of page.rows) await deleteWithTombstone(db, tableId, row, transaction.$id, tombstones);
       await db.updateTransaction({ transactionId: transaction.$id, commit: true });
     } catch (e) {
       await db.updateTransaction({ transactionId: transaction.$id, rollback: true }).catch(() => {});
       throw e;
     }
-    if (page.rows.length < DELETE_BATCH_SIZE) return;
+    if (page.rows.length < batch) return;
   }
 }
 
@@ -246,11 +262,16 @@ async function renumberDuplicateTasks(db) {
 }
 
 // Exported for scripts/tasknumber.test.ts + taskorder.test.ts (Appwrite only uses the default).
-export { freeTaskNumber, settleTaskNumber, renumberDuplicateTasks, forEachLimited };
+export { freeTaskNumber, settleTaskNumber, renumberDuplicateTasks, forEachLimited, deleteAllRows };
 
 async function existingRow(db, tableId, rowId) {
   try { return await db.getRow({ databaseId: DATABASE_ID, tableId, rowId }); }
   catch (e) { if (Number(e?.code) === 404) return null; throw e; }
+}
+
+function searchParam(req, name) {
+  const fromUrl = new URL(req.url || req.path || '/', 'https://function.local').searchParams.get(name);
+  return fromUrl ?? req.query?.[name] ?? null;
 }
 
 function parseRequestPath(req) {
@@ -273,7 +294,15 @@ function empty(res, status = 204) {
   return res.send('', status, JSON_HEADERS);
 }
 
-export default async ({ req, res, error }) => {
+// A TablesDB acting as the calling user (their JWT). Injectable for tests.
+const userDb = (jwt) => new TablesDB(new Client()
+  .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT)
+  .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID)
+  .setJWT(jwt));
+
+export default (ctx) => handleRequest(ctx, userDb);
+
+export async function handleRequest({ req, res, error }, makeDb) {
   try {
     if (req.method === 'OPTIONS') return empty(res, 204);
     const path = parseRequestPath(req);
@@ -293,11 +322,7 @@ export default async ({ req, res, error }) => {
     const jwt = req.headers['x-appwrite-user-jwt'];
     if (!jwt) return response(res, { error: 'Authentication required' }, 401);
 
-    const client = new Client()
-      .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT)
-      .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID)
-      .setJWT(jwt);
-    const db = new TablesDB(client);
+    const db = makeDb(jwt);
     // req.bodyJson is a getter that runs JSON.parse() eagerly and THROWS for
     // an empty body — every GET/DELETE call (no body at all) crashed this
     // function with a 500 before it even reached the method/path routing
@@ -325,9 +350,16 @@ export default async ({ req, res, error }) => {
         for (const [key, value] of Object.entries(body)) {
           await db.upsertRow({ databaseId: DATABASE_ID, tableId: 'settings', rowId: stableRowId(key), data: { key, valueJson: JSON.stringify(value) } });
         }
-        const rows = await listAll(db, 'settings');
-        return response(res, Object.fromEntries(rows.map((r) => [r.key, JSON.parse(r.valueJson)])));
+        // Only the patched keys: no client reads this reply, and listing the
+        // whole table cost ~30 reads per settings change.
+        return response(res, body);
       }
+    }
+
+    if (path === '/api/sync' && req.method === 'GET') {
+      const since = searchParam(req, 'since');
+      const fromRow = (table, row) => table === 'tasks' ? taskFromRow(row) : simpleFromRow(table, row);
+      return response(res, await syncChanges({ db, databaseId: DATABASE_ID, since, fromRow }));
     }
 
     const match = path.match(/^\/api\/(tasks|projects|categories|members|sections|blockers|saved-views|activity-log)(?:\/([^/]+))?$/);
@@ -339,6 +371,16 @@ export default async ({ req, res, error }) => {
     const isTasks = resource === 'tasks';
     const fromRow = (row) => isTasks ? taskFromRow(row) : simpleFromRow(resource, row);
     const toRow = (value) => isTasks ? taskToRow(value) : simpleToRow(resource, value);
+
+    if (req.method === 'GET' && !routeId && resource === 'activity_log') {
+      // Newest first, capped: the log grows without bound on Appwrite and
+      // every returned row is a billed read. Old clients get the newest 500
+      // (the app never kept more, see ACTIVITY_CAP in src/store.ts).
+      const raw = Number(searchParam(req, 'limit'));
+      const limit = Number.isInteger(raw) && raw > 0 ? Math.min(raw, ACTIVITY_MAX) : ACTIVITY_MAX;
+      const { rows } = await db.listRows({ databaseId: DATABASE_ID, tableId, queries: [Query.orderDesc('at'), Query.limit(limit)], total: false });
+      return response(res, rows.map(fromRow));
+    }
 
     if (req.method === 'GET' && !routeId) {
       const cfg = isTasks ? { order: ['sortOrder', 'createdAt'] } : configs[resource];
@@ -413,14 +455,16 @@ export default async ({ req, res, error }) => {
         await deleteAllRows(db, 'tasks', Query.equal('projectId', [routeId]));
         await deleteAllRows(db, 'sections', Query.equal('scope', [routeId]));
       }
+      const tombstones = await hasTombstoneTable(db, DATABASE_ID);
       const transaction = await db.createTransaction({ ttl: 60 });
       try {
-        await db.deleteRow({ databaseId: DATABASE_ID, tableId, rowId: stableRowId(routeId), transactionId: transaction.$id });
+        await deleteWithTombstone(db, tableId, { $id: stableRowId(routeId), legacyId: routeId }, transaction.$id, tombstones);
         await db.updateTransaction({ transactionId: transaction.$id, commit: true });
       } catch (e) {
         await db.updateTransaction({ transactionId: transaction.$id, rollback: true }).catch(() => {});
         throw e;
       }
+      if (tombstones) await pruneTombstones(db, DATABASE_ID).catch((e) => error(`pruning tombstones failed: ${e?.message ?? e}`));
       return empty(res);
     }
 
