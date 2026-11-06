@@ -1,6 +1,6 @@
 // Die Werkzeuge des MCP-Servers (#88, seit #100 mit task_bearbeiten/
 // task_loeschen, seit #130 legt task_anlegen auch Subtasks an, für Second Brain #10
-// kommentar_speichern/kommentar_loeschen).
+// kommentar_speichern/kommentar_loeschen, projekt_anlegen, tasks_zustand).
 // Verdrahtet api.ts + logic.ts.
 // Jede Antwort: vorlesbarer deutscher Text + structuredContent; Fehler als
 // isError mit Klartext (AC-18) — nie ein Prozessabsturz.
@@ -10,6 +10,7 @@ import { ApiError, type TaskApi } from './api.js';
 import {
   LogicError,
   assertSubtaskParent,
+  buildNewProject,
   commentPatch,
   completePatch,
   dateKey,
@@ -284,6 +285,30 @@ export function registerTools(server: McpServer, api: TaskApi): void {
   );
 
   // ── Schreiben ─────────────────────────────────────────────────────────────
+  server.registerTool(
+    'projekt_anlegen',
+    {
+      title: 'Projekt anlegen',
+      description:
+        'Legt ein neues Projekt (oder eine Area) an. aktiv ist Pflicht: true = aktives Projekt (unter „Projekte"), false = Someday/inaktiv. ' +
+        'Hat der Nutzer nicht gesagt, ob aktiv oder Someday, frag nach statt zu raten. Gibt es schon ein gleichnamiges Projekt, wird keins angelegt. ' +
+        'Danach können Tasks mit task_anlegen (projektName) hineingelegt werden.',
+      inputSchema: {
+        name: z.string().min(1).describe('Name des Projekts'),
+        aktiv: z.boolean().describe('true = aktiv, false = Someday (inaktiv)'),
+        art: z.enum(['project', 'area']).optional().describe('project (Standard) oder area (laufender Verantwortungsbereich)'),
+        beschreibung: z.string().optional(),
+      },
+    },
+    guard(async ({ name, aktiv, art, beschreibung }) => {
+      const projects = await api.getProjects();
+      const created = await api.createProject(buildNewProject({ name, aktiv, art, beschreibung }, { projects }));
+      const was = created.kind === 'area' ? 'Area' : 'Projekt';
+      const text = `Angelegt: ${was} „${created.name}" (${created.active ? 'aktiv' : 'Someday'}).`;
+      return ok(text, { projekt: { id: created.id, name: created.name, kind: created.kind, active: created.active } });
+    }),
+  );
+
   server.registerTool(
     'task_anlegen',
     {

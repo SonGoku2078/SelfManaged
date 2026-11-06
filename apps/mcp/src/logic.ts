@@ -92,6 +92,46 @@ export function resolveProject(
   );
 }
 
+// Neues Projekt/Area wie store.addProject: id-Format proj-…, Farbe reihum aus
+// PROJECT_COLORS, Icon 📁/🔁. sortOrder = kleinster − 1 → erscheint oben
+// (die App stellt neue Projekte ebenfalls an den Anfang). Nur bekannte
+// Projektfelder — die Appwrite-Function übernimmt jedes mitgeschickte Feld.
+// Gleichnamiges sichtbares Projekt → LogicError statt Duplikat.
+const PROJECT_COLORS = ['#4caf50', '#2196f3', '#ff9800', '#9c27b0', '#e91e63', '#00bcd4'];
+
+export const newProjectId = (now = Date.now(), rnd = Math.random()): string =>
+  `proj-${now.toString(36)}-${Math.floor(rnd * 1e6).toString(36)}`;
+
+export interface NewProjectInput {
+  name: string;
+  aktiv: boolean;
+  art?: 'project' | 'area';
+  beschreibung?: string;
+}
+
+export function buildNewProject(input: NewProjectInput, ctx: { projects: ApiProject[]; id?: string }): Record<string, unknown> {
+  const name = input.name.trim();
+  if (!name) throw new LogicError('Der Projektname darf nicht leer sein.');
+  const dup = visibleProjects(ctx.projects).find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+  if (dup) throw new LogicError(`Ein Projekt „${dup.name}" gibt es bereits (${dup.id}).`);
+  const kind = input.art ?? 'project';
+  const minOrder = ctx.projects.reduce((m, p) => Math.min(m, p.sortOrder ?? 0), 0);
+  const beschreibung = input.beschreibung?.trim();
+  return {
+    id: ctx.id ?? newProjectId(),
+    name,
+    color: PROJECT_COLORS[ctx.projects.length % PROJECT_COLORS.length],
+    icon: kind === 'area' ? '🔁' : '📁',
+    pinned: false,
+    active: input.aktiv,
+    kind,
+    ...(beschreibung ? { description: beschreibung } : {}),
+    sortOrder: minOrder - 1,
+    parentAreaId: null,
+    archived: false,
+  };
+}
+
 export function resolveCategories(cats: ApiCategory[], names: string[]): string[] {
   return names.map((n) => {
     const q = n.trim().toLowerCase();

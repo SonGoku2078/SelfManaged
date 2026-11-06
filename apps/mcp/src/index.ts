@@ -39,7 +39,7 @@ function buildApi(): TaskApi {
 
 async function main(): Promise<void> {
   const api = buildApi();
-  const server = new McpServer({ name: 'task-manager', version: '1.0.0' });
+  const server = new McpServer({ name: 'task-manager', version: '1.1.0' });
   registerTools(server, api);
   const transport = new StdioServerTransport();
   await server.connect(transport);

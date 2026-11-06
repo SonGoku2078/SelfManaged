@@ -76,7 +76,8 @@ export class SyncedTaskApi implements TaskApi {
   /** Für Tests/Diagnose: wie oft der Server gefragt wurde. */
   stats = { syncs: 0, fullLoads: 0 };
 
-  constructor(private readonly inner: TaskApi, opts: SyncedOptions = {}) {
+  // createProject: nur der MCP kennt es (#163), gpt-actions nicht.
+  constructor(private readonly inner: Omit<TaskApi, 'createProject'> & Partial<Pick<TaskApi, 'createProject'>>, opts: SyncedOptions = {}) {
     this.baseUrl = inner.baseUrl;
     this.now = opts.now ?? Date.now;
     this.minSyncMs = opts.minSyncMs ?? MIN_SYNC_MS;
@@ -94,6 +95,13 @@ export class SyncedTaskApi implements TaskApi {
     const t = await this.inner.createTask(task);
     if (t?.id) this.tasks.set(t.id, t);
     return t;
+  }
+
+  async createProject(project: Record<string, unknown>): Promise<ApiProject> {
+    if (!this.inner.createProject) throw new Error('Projekte anlegen wird von diesem Backend nicht unterstützt.');
+    const p = await this.inner.createProject(project);
+    if (p?.id) this.projects.set(p.id, p);
+    return p;
   }
 
   async patchTask(id: string, patch: Record<string, unknown>): Promise<ApiTask> {

@@ -1,6 +1,6 @@
 // Dünner HTTP-Client auf die bestehende REST-API von SelfManaged (#88).
-// Seit #100: volles Task-CRUD (deleteTask) — Projekte/Kategorien bleiben
-// weiterhin nur lesbar, kein neuer Schreib-Pfad dafür.
+// Seit #100: volles Task-CRUD (deleteTask). Projekte: nur Anlegen
+// (createProject, für Second Brain) — Kategorien bleiben nur lesbar.
 //
 // Zwei Backends je Umgebungsvariable (Nachtrag 2026-09-26 zu #96/#98):
 // Dev/Express (TM_API_URL) unveraendert seit #88, Prod/Appwrite
@@ -42,6 +42,7 @@ export interface TaskApi {
   health(): Promise<{ ok: boolean }>;
   getTasks(): Promise<ApiTask[]>;
   getProjects(): Promise<ApiProject[]>;
+  createProject(project: Record<string, unknown>): Promise<ApiProject>;
   getCategories(): Promise<ApiCategory[]>;
   /** Änderungen seit `since` (serverTime der letzten Antwort), null = alles. */
   sync?(since: string | null): Promise<SyncResponse>;
@@ -77,6 +78,7 @@ export class TaskManagerApi implements TaskApi {
   health() { return this.request<{ ok: boolean }>('GET', '/health'); }
   getTasks() { return this.request<ApiTask[]>('GET', '/api/tasks'); }
   getProjects() { return this.request<ApiProject[]>('GET', '/api/projects'); }
+  createProject(project: Record<string, unknown>) { return this.request<ApiProject>('POST', '/api/projects', project); }
   getCategories() { return this.request<ApiCategory[]>('GET', '/api/categories'); }
   sync(since: string | null) { return this.request<SyncResponse>('GET', syncPath(since)).catch(unsupported); }
   createTask(task: Record<string, unknown>) { return this.request<ApiTask>('POST', '/api/tasks', task); }
@@ -108,6 +110,7 @@ export class AppwriteTaskManagerApi implements TaskApi {
   health() { return this.request<{ ok: boolean }>('GET', '/health'); }
   getTasks() { return this.request<ApiTask[]>('GET', '/api/tasks'); }
   getProjects() { return this.request<ApiProject[]>('GET', '/api/projects'); }
+  createProject(project: Record<string, unknown>) { return this.request<ApiProject>('POST', '/api/projects', project); }
   getCategories() { return this.request<ApiCategory[]>('GET', '/api/categories'); }
   sync(since: string | null) { return this.request<SyncResponse>('GET', syncPath(since)).catch(unsupported); }
   createTask(task: Record<string, unknown>) { return this.request<ApiTask>('POST', '/api/tasks', task); }
