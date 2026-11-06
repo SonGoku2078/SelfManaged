@@ -10,7 +10,32 @@
 import type { ApiCategory, ApiProject, ApiTask } from './logic.js';
 import { APPWRITE_PROD_SITE_URL, appwriteApiFetch } from './appwriteApi.js';
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(message: string, options?: { cause?: unknown; status?: number }) {
+    super(message, options);
+    this.status = options?.status;
+  }
+  readonly status?: number;
+}
+
+/** Der Server kennt GET /api/sync nicht (Express-Dev-Server, ältere Function). */
+export class SyncUnsupportedError extends Error {}
+
+/** Antwort von GET /api/sync (apps/functions/api/src/sync.js). */
+export interface SyncResponse {
+  serverTime: string;
+  full: boolean;
+  tasks?: ApiTask[];
+  projects?: ApiProject[];
+  categories?: ApiCategory[];
+  deleted?: Record<string, string[]>;
+}
+
+const syncPath = (since: string | null) => `/api/sync${since ? `?since=${encodeURIComponent(since)}` : ''}`;
+const unsupported = (e: unknown): never => {
+  if (e instanceof ApiError && e.status === 404) throw new SyncUnsupportedError(e.message);
+  throw e;
+};
 
 export interface TaskApi {
   readonly baseUrl: string;
@@ -19,6 +44,8 @@ export interface TaskApi {
   getProjects(): Promise<ApiProject[]>;
   createProject(project: Record<string, unknown>): Promise<ApiProject>;
   getCategories(): Promise<ApiCategory[]>;
+  /** Änderungen seit `since` (serverTime der letzten Antwort), null = alles. */
+  sync?(since: string | null): Promise<SyncResponse>;
   createTask(task: Record<string, unknown>): Promise<ApiTask>;
   patchTask(id: string, patch: Record<string, unknown>): Promise<ApiTask>;
   deleteTask(id: string): Promise<void>;
@@ -42,7 +69,7 @@ export class TaskManagerApi implements TaskApi {
     }
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
-      throw new ApiError(`Server antwortete ${res.status} auf ${method} ${path}: ${text}`);
+      throw new ApiError(`Server antwortete ${res.status} auf ${method} ${path}: ${text}`, { status: res.status });
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
@@ -53,6 +80,7 @@ export class TaskManagerApi implements TaskApi {
   getProjects() { return this.request<ApiProject[]>('GET', '/api/projects'); }
   createProject(project: Record<string, unknown>) { return this.request<ApiProject>('POST', '/api/projects', project); }
   getCategories() { return this.request<ApiCategory[]>('GET', '/api/categories'); }
+  sync(since: string | null) { return this.request<SyncResponse>('GET', syncPath(since)).catch(unsupported); }
   createTask(task: Record<string, unknown>) { return this.request<ApiTask>('POST', '/api/tasks', task); }
   patchTask(id: string, patch: Record<string, unknown>) {
     return this.request<ApiTask>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch);
@@ -74,7 +102,8 @@ export class AppwriteTaskManagerApi implements TaskApi {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (e) {
-      throw new ApiError(e instanceof Error ? e.message : String(e), { cause: e });
+      const status = Number((e as { status?: unknown })?.status) || undefined;
+      throw new ApiError(e instanceof Error ? e.message : String(e), { cause: e, status });
     }
   }
 
@@ -83,6 +112,7 @@ export class AppwriteTaskManagerApi implements TaskApi {
   getProjects() { return this.request<ApiProject[]>('GET', '/api/projects'); }
   createProject(project: Record<string, unknown>) { return this.request<ApiProject>('POST', '/api/projects', project); }
   getCategories() { return this.request<ApiCategory[]>('GET', '/api/categories'); }
+  sync(since: string | null) { return this.request<SyncResponse>('GET', syncPath(since)).catch(unsupported); }
   createTask(task: Record<string, unknown>) { return this.request<ApiTask>('POST', '/api/tasks', task); }
   patchTask(id: string, patch: Record<string, unknown>) {
     return this.request<ApiTask>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch);

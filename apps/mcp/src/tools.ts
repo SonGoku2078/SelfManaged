@@ -1,6 +1,6 @@
-// Die 19 Werkzeuge des MCP-Servers (#88, seit #100 mit task_bearbeiten/
+// Die Werkzeuge des MCP-Servers (#88, seit #100 mit task_bearbeiten/
 // task_loeschen, seit #130 legt task_anlegen auch Subtasks an, für Second Brain #10
-// kommentar_speichern/kommentar_loeschen, projekt_anlegen).
+// kommentar_speichern/kommentar_loeschen, projekt_anlegen, tasks_zustand).
 // Verdrahtet api.ts + logic.ts.
 // Jede Antwort: vorlesbarer deutscher Text + structuredContent; Fehler als
 // isError mit Klartext (AC-18) — nie ein Prozessabsturz.
@@ -29,6 +29,7 @@ import {
   searchTasks,
   starPatch,
   taskDetail,
+  tasksState,
   taskSummary,
   tasksOfProject,
   unplanPatch,
@@ -233,6 +234,23 @@ export function registerTools(server: McpServer, api: TaskApi): void {
       const extra = [d.description ? `Beschreibung: ${d.description}` : null, `${d.comments.length} Kommentare, ${d.subtasks.length} offene Subtasks`]
         .filter(Boolean).join('\n');
       return ok(`${line}\n${extra}`, { task: d });
+    }),
+  );
+
+  // Second Brain fragte pro {{#nr}}-Verweis einzeln task_holen und pro Projekt
+  // tasks_auflisten ab (Appwrite gesperrt, 2026-11). Ein Aufruf für alle.
+  server.registerTool(
+    'tasks_zustand',
+    {
+      title: 'Zustand mehrerer Tasks',
+      description: 'Zustand mehrerer Tasks per Nummer in einem Aufruf (für Second Brain): erledigt, ★, Projekt, übergeordneter Task und Zahl offener Subtasks. Nicht gefundene Nummern stehen unter „fehlend" (gelöscht).',
+      inputSchema: { taskNummern: z.array(z.number().int().positive()).min(1).max(500).describe('Task-Nummern #N') },
+    },
+    guard(async ({ taskNummern }) => {
+      const [tasks, projects] = await Promise.all([api.getTasks(), api.getProjects()]);
+      const states = tasksState(tasks, taskNummern, (t) => summaries([t], projects)[0]);
+      const lines = Object.values(states.tasks).map((t) => `#${t.number} ${t.completed ? '✓' : '○'} ${t.title}`);
+      return ok(lines.join('\n') || 'Keine der Nummern gefunden.', states);
     }),
   );
 

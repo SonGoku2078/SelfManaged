@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useStore } from '../store';
 import type { ActivityEntry } from '../types';
 import './ActivityLog.css';
@@ -50,6 +51,11 @@ export default function ActivityLog() {
   const tasks = useStore((s) => s.tasks);
   const selectTask = useStore((s) => s.selectTask);
   const restoreTask = useStore((s) => s.restoreTask);
+  const loadActivityLog = useStore((s) => s.loadActivityLog);
+
+  // Not part of the regular sync any more (Appwrite bills every row): fetched
+  // when the view opens.
+  useEffect(() => { void loadActivityLog(); }, [loadActivityLog]);
 
   if (activityLog.length === 0) {
     return (

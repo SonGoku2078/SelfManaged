@@ -147,6 +147,56 @@ export function blockersToIcs(blockers, projects, tasks = [], now = new Date()) 
   return calendar('SelfManaged Projektblocker', events);
 }
 
+// ── Rows for the feeds (Appwrite usage, 2026-11) ───────────────────────────
+// Every returned row is a billed read and calendar apps refetch hourly or
+// more often. Read only what ends up in the calendar: no completed tasks older
+// than COMPLETED_DAYS, only projects that are referenced, and for the blocker
+// feed only open top-level tasks of the blocked projects in this week.
+export const COMPLETED_DAYS = 60;
+const PAGE = 1000;
+const IN_MAX = 100; // Appwrite: at most 100 values per equal()
+
+async function listPaged(db, tableId, queries) {
+  const out = [];
+  let cursor = null;
+  for (;;) {
+    const page = [...queries, Query.limit(PAGE)];
+    if (cursor) page.push(Query.cursorAfter(cursor));
+    const { rows } = await db.listRows({ databaseId: DATABASE_ID, tableId, queries: page, total: false });
+    out.push(...rows);
+    if (rows.length < PAGE) return out;
+    cursor = rows[rows.length - 1].$id;
+  }
+}
+
+async function listIn(db, tableId, attribute, values, queries = []) {
+  const unique = [...new Set(values.filter(Boolean))];
+  const out = [];
+  for (let i = 0; i < unique.length; i += IN_MAX) out.push(...await listPaged(db, tableId, [Query.equal(attribute, unique.slice(i, i + IN_MAX)), ...queries]));
+  return out;
+}
+
+export async function taskFeedRows(db, now = new Date()) {
+  const cutoff = new Date(now.getTime() - COMPLETED_DAYS * DAY_MS).toISOString();
+  const tasks = await listPaged(db, 'tasks', [Query.isNotNull('dueDate'), Query.or([Query.equal('completed', [false]), Query.greaterThan('dueDate', cutoff)])]);
+  const projects = await listIn(db, 'projects', 'legacyId', tasks.map((t) => t.projectId));
+  return { tasks, projects };
+}
+
+export async function blockerFeedRows(db, now = new Date()) {
+  const blockers = await listPaged(db, 'blockers', []);
+  const ids = blockers.map((b) => b.projectId);
+  const monday = zurichMonday(now).getTime();
+  // A day of slack on both ends; blockersToIcs applies the exact Zurich week.
+  const from = new Date(monday - DAY_MS).toISOString();
+  const to = new Date(monday + 8 * DAY_MS).toISOString();
+  const [projects, tasks] = await Promise.all([
+    listIn(db, 'projects', 'legacyId', ids),
+    listIn(db, 'tasks', 'projectId', ids, [Query.equal('completed', [false]), Query.isNull('parentId'), Query.or([Query.equal('thisWeek', [true]), Query.between('dueDate', from, to)])]),
+  ]);
+  return { blockers, projects, tasks };
+}
+
 function tokenMatches(expected, received) {
   if (!expected || expected.length !== received.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
@@ -166,22 +216,15 @@ export default async ({ req, res, error }) => {
       .setKey(req.headers['x-appwrite-key']);
     const db = new TablesDB(client);
     if (match[2]) {
-      const [blockers, projects, tasks] = await Promise.all([
-        db.listRows({ databaseId: DATABASE_ID, tableId: 'blockers', queries: [Query.limit(5000)], total: false }),
-        db.listRows({ databaseId: DATABASE_ID, tableId: 'projects', queries: [Query.limit(5000)], total: false }),
-        db.listRows({ databaseId: DATABASE_ID, tableId: 'tasks', queries: [Query.equal('completed', false), Query.limit(5000)], total: false }),
-      ]);
-      return res.text(blockersToIcs(blockers.rows, projects.rows, tasks.rows), 200, {
+      const { blockers, projects, tasks } = await blockerFeedRows(db);
+      return res.text(blockersToIcs(blockers, projects, tasks), 200, {
         'content-type': 'text/calendar; charset=utf-8',
         'content-disposition': 'inline; filename="selfmanaged-projektblocker.ics"',
         'cache-control': 'no-cache',
       });
     }
-    const [tasks, projects] = await Promise.all([
-      db.listRows({ databaseId: DATABASE_ID, tableId: 'tasks', queries: [Query.isNotNull('dueDate'), Query.limit(5000)], total: false }),
-      db.listRows({ databaseId: DATABASE_ID, tableId: 'projects', queries: [Query.limit(5000)], total: false }),
-    ]);
-    return res.text(tasksToIcs(tasks.rows, projects.rows), 200, {
+    const { tasks, projects } = await taskFeedRows(db);
+    return res.text(tasksToIcs(tasks, projects), 200, {
       'content-type': 'text/calendar; charset=utf-8',
       'content-disposition': 'inline; filename="selfmanaged.ics"',
       'cache-control': 'no-cache',

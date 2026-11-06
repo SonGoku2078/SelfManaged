@@ -24,6 +24,7 @@ import { authFailureLimiter, requireApiKey } from './auth.js';
 import { AppwriteTaskManagerApi, TaskManagerApi, type TaskApi } from './api.js';
 import { resolveTransportMode, TransportConfigError, type TransportMode } from '../../mcp/src/appwriteApi.js';
 import { buildRouter, errorHandler } from './routes.js';
+import { SyncedTaskApi } from '../../mcp/src/syncedApi.js';
 
 function readEnv(name: string, beispiel: string): string {
   const raw = (process.env[name] ?? '').trim();
@@ -46,7 +47,9 @@ function buildApi(): TaskApi {
     console.error(`FEHLER: ${msg}`);
     process.exit(1);
   }
-  return mode.kind === 'express' ? new TaskManagerApi(mode.baseUrl) : new AppwriteTaskManagerApi();
+  const inner = mode.kind === 'express' ? new TaskManagerApi(mode.baseUrl) : new AppwriteTaskManagerApi();
+  // Zwischenspeicher + GET /api/sync statt ganzer Tabellen pro Aufruf (Appwrite-Verbrauch, 2026-11).
+  return new SyncedTaskApi(inner);
 }
 
 const apiKey = readEnv('GPT_ACTIONS_API_KEY', '(z. B. mit: openssl rand -hex 32)');
