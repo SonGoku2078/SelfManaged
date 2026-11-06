@@ -19,6 +19,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { AppwriteTaskManagerApi, TaskManagerApi, type TaskApi } from './api.js';
 import { resolveTransportMode, TransportConfigError, type TransportMode } from './appwriteApi.js';
 import { envKind } from './logic.js';
+import { cacheFileFor, SyncedTaskApi } from './syncedApi.js';
 import { registerTools } from './tools.js';
 
 function buildApi(): TaskApi {
@@ -30,7 +31,10 @@ function buildApi(): TaskApi {
     console.error(`FEHLER: ${msg}`);
     process.exit(1);
   }
-  return mode.kind === 'express' ? new TaskManagerApi(mode.baseUrl) : new AppwriteTaskManagerApi();
+  const inner = mode.kind === 'express' ? new TaskManagerApi(mode.baseUrl) : new AppwriteTaskManagerApi();
+  // Jedes Werkzeug fragt getTasks()/getProjects(): aus dem Zwischenspeicher,
+  // abgeglichen über GET /api/sync statt ganzer Tabellen.
+  return new SyncedTaskApi(inner, { cacheFile: cacheFileFor(mode.kind) });
 }
 
 async function main(): Promise<void> {
