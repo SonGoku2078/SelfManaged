@@ -18,6 +18,7 @@
 // HTTP-Domain funktioniert nicht: Appwrites Edge entfernt dabei jeden
 // x-appwrite-*-Header (siehe src/api/client.ts::appwriteApiFetch).
 import { Client, ExecutionMethod, Functions } from 'appwrite';
+import { withRetry } from './retry.js';
 
 // Oeffentlich, kein Secret (siehe .env.appwrite / src/appwrite/client.ts).
 const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
@@ -59,11 +60,12 @@ async function login(): Promise<AppwriteSession> {
   }
   let res: Response;
   try {
-    res = await fetch(`${APPWRITE_ENDPOINT}/account/sessions/email`, {
+    // Nur bei gescheitertem Verbindungsaufbau wiederholt (POST, siehe retry.ts)
+    res = await withRetry(() => fetch(`${APPWRITE_ENDPOINT}/account/sessions/email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Appwrite-Project': APPWRITE_PROJECT_ID },
       body: JSON.stringify({ email, password }),
-    });
+    }), 'POST');
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
     throw new AppwriteAuthError(`Appwrite-Login nicht erreichbar: ${why}`, { cause: e });
@@ -111,13 +113,15 @@ export async function appwriteApiFetch<T>(path: string, init?: AppwriteFetchInit
   const method = (init?.method ?? 'GET').toUpperCase();
   let execution;
   try {
-    execution = await functions.createExecution({
+    // Die Execution selbst ist ein POST an Appwrite; wiederholt wird nach der Methode des eigentlichen
+    // Aufrufs: lesend bei jedem Netzfehler, schreibend nur bei gescheitertem Verbindungsaufbau (retry.ts).
+    execution = await withRetry(() => functions.createExecution({
       functionId: APPWRITE_FUNCTION_ID,
       body: init?.body ?? '',
       async: false,
       xpath: path,
       method: method as ExecutionMethod,
-    });
+    }), method);
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
     throw new Error(`Appwrite-Function „${APPWRITE_FUNCTION_ID}" nicht erreichbar (${why}).`, { cause: e });
